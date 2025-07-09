@@ -1,0 +1,15 @@
+[submodule "3rdparty/libmakefile"]
+	path = 3rdparty/libmakefile
+	url = https://github.com/alperakcan/libmakefile.git
+[submodule "3rdparty/mimalloc"]
+	path = 3rdparty/mimalloc
+	url = https://github.com/microsoft/mimalloc.git
+[submodule "3rdparty/rapidjson"]
+	path = 3rdparty/rapidjson
+	url = https://github.com/Tencent/rapidjson.git
+[submodule "3rdparty/shapelib"]
+	path = 3rdparty/shapelib
+	url = https://github.com/OSGeo/shapelib.git
+[submodule "3rdparty/protobuf-c"]
+	path = 3rdparty/protobuf-c
+	url = https://github.com/protobuf-c/protobuf-c.git
