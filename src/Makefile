@@ -29,6 +29,12 @@ clew_includes-y += \
 clew_libraries-y += \
 	${CLEW_3RDPARTY_INSTALL_PATH}/usr/local/lib
 
+clew_depends-y += \
+	input-osm-pbf-fileformat.pb-c.c \
+	input-osm-pbf-fileformat.pb-c.h \
+	input-osm-pbf-osmformat.pb-c.c \
+	input-osm-pbf-osmformat.pb-c.h \
+
 clew_input-osm-pbf-fileformat.pb-c.c_cflags-y += \
 	-Wno-missing-braces
 
@@ -47,9 +53,11 @@ dist.bin-y     += clew
 include ${CLEW_LIBMAKEFILE_PATH}/Makefile.lib
 
 input-osm-pbf-fileformat.pb-c.c input-osm-pbf-fileformat.pb-c.h: input-osm-pbf-fileformat.proto
+	${Q}echo "  GEN        $*"
 	${Q}protoc-c input-osm-pbf-fileformat.proto --c_out=.
 
 input-osm-pbf-osmformat.pb-c.c input-osm-pbf-osmformat.pb-c.h: input-osm-pbf-osmformat.proto
+	${Q}echo "  GEN        $*"
 	${Q}protoc-c input-osm-pbf-osmformat.proto --c_out=.
 
 clean:
