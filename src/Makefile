@@ -19,6 +19,8 @@ clew_files-y += \
 	debug.c \
 	input-osm-pbf-fileformat.pb-c.c \
 	input-osm-pbf-osmformat.pb-c.c \
+	input-osm-pbf.c \
+	input.c \
 	main.c \
 
 clew_includes-y += \
@@ -35,7 +37,8 @@ clew_cxxflags-y += \
 	-fno-exceptions
 
 clew_ldflags-y += \
-	-lprotobuf-c
+	-lprotobuf-c \
+	-lz
 
 dist.dir        = ../dist
 dist.base       = clew

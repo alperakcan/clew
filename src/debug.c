@@ -7,7 +7,7 @@
 #include <sys/time.h>
 #include <pthread.h>
 
-#define CLEW_DEBUG_NAME       "PatikaDebug"
+#define CLEW_DEBUG_NAME       "debug"
 #include "debug.h"
 
 unsigned int clew_debug_level           = CLEW_DEBUG_LEVEL_INFO;
@@ -152,7 +152,7 @@ int clew_debug_printf (unsigned int level, const char *name, const char *functio
         tm = localtime(&timeval_tv_sec);
         strftime(date, sizeof(date), "%x %H:%M:%S", tm);
 
-        fprintf(stderr, "patika:%s.%03d:%-20s:%-5s: %s (%s %s:%d)\n", date, milliseconds, name, clew_debug_level_to_string(level), debug_buffer, function, file, line);
+        fprintf(stderr, "clew:%s.%03d:%-10s:%-5s: %s (%s %s:%d)\n", date, milliseconds, name, clew_debug_level_to_string(level), debug_buffer, function, file, line);
         fflush(stderr);
 
         clew_debug_unlock();
