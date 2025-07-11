@@ -37,30 +37,30 @@
 #define OPTION_DROP_RELATIONS           0x406
 
 static struct option g_long_options[] = {
-        { "help",                     no_argument,        0,        OPTION_HELP                     },
-        { "input",                     required_argument,        0,        OPTION_INPUT                    },
-        { "output",                     required_argument,        0,        OPTION_OUTPUT                   },
-        { "expression",                     required_argument,        0,        OPTION_EXPRESSION               },
-        { "keep-tag",                required_argument,        0,        OPTION_KEEP_TAG                 },
-        { "keep-tag-node",           required_argument,        0,        OPTION_KEEP_TAG_NODE            },
-        { "keep-tag-way",            required_argument,        0,        OPTION_KEEP_TAG_WAY             },
-        { "keep-tag-relation",       required_argument,        0,      OPTION_KEEP_TAG_RELATION        },
-        { "drop-tag",                required_argument,        0,        OPTION_DROP_TAG                 },
-        { "drop-tag-node",           required_argument,        0,        OPTION_DROP_TAG_NODE            },
-        { "drop-tag-way",            required_argument,        0,        OPTION_DROP_TAG_WAY             },
-        { "drop-tag-relation",       required_argument,        0,      OPTION_DROP_TAG_RELATION        },
-        { "keep-nodes",              required_argument,        0,        OPTION_KEEP_NODES               },
-        { "keep-ways",               required_argument,        0,        OPTION_KEEP_WAYS                },
-        { "keep-relations",          required_argument,        0,        OPTION_KEEP_RELATIONS           },
-        { "drop-nodes",              required_argument,        0,        OPTION_DROP_NODES               },
-        { "drop-ways",               required_argument,        0,        OPTION_DROP_WAYS                },
-        { "drop-relations",          required_argument,        0,        OPTION_DROP_RELATIONS           },
-        { 0,                             0,                        0,        0                               }
+        { "help",               no_argument,            0,      OPTION_HELP                     },
+        { "input",              required_argument,      0,      OPTION_INPUT                    },
+        { "output",             required_argument,      0,      OPTION_OUTPUT                   },
+        { "expression",         required_argument,      0,      OPTION_EXPRESSION               },
+        { "keep-tag",           required_argument,      0,      OPTION_KEEP_TAG                 },
+        { "keep-tag-node",      required_argument,      0,      OPTION_KEEP_TAG_NODE            },
+        { "keep-tag-way",       required_argument,      0,      OPTION_KEEP_TAG_WAY             },
+        { "keep-tag-relation",  required_argument,      0,      OPTION_KEEP_TAG_RELATION        },
+        { "drop-tag",           required_argument,      0,      OPTION_DROP_TAG                 },
+        { "drop-tag-node",      required_argument,      0,      OPTION_DROP_TAG_NODE            },
+        { "drop-tag-way",       required_argument,      0,      OPTION_DROP_TAG_WAY             },
+        { "drop-tag-relation",  required_argument,      0,      OPTION_DROP_TAG_RELATION        },
+        { "keep-nodes",         required_argument,      0,      OPTION_KEEP_NODES               },
+        { "keep-ways",          required_argument,      0,      OPTION_KEEP_WAYS                },
+        { "keep-relations",     required_argument,      0,      OPTION_KEEP_RELATIONS           },
+        { "drop-nodes",         required_argument,      0,      OPTION_DROP_NODES               },
+        { "drop-ways",          required_argument,      0,      OPTION_DROP_WAYS                },
+        { "drop-relations",     required_argument,      0,      OPTION_DROP_RELATIONS           },
+        { 0,                    0,                      0,      0                               }
 };
 
 enum {
-        CLEW_STATE_INITIAL,
-#define CLEW_STATE_INITIAL      CLEW_STATE_INITIAL
+        CLEW_STATE_INITIAL              = 0,
+#define CLEW_STATE_INITIAL              CLEW_STATE_INITIAL
 };
 
 enum {
@@ -343,7 +343,7 @@ static int input_callback_tag_end (struct clew_input *input, void *context)
         snprintf(clew->tag_s, sizeof(clew->tag_s), "%s_%s", clew->tag_k, clew->tag_v);
         tag = clew_tag_value(clew->tag_s);
         if (tag == clew_tag_unknown) {
-                //clew_todof("unknown tag: '%s' = '%s'", clew->tag_k, clew->tag_v);
+                //clew_todof("tag is invalid, '%s' = '%s'", clew->tag_k, clew->tag_v);
                 goto out;
         }
         rc = clew_stack_push_uint32(tags, tag);
