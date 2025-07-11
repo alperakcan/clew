@@ -107,17 +107,16 @@ struct clew {
 
         struct clew_stack read_state;
         struct clew_stack node_ids;
-        struct clew_stack node_tags;
         struct clew_stack way_ids;
-        struct clew_stack way_tags;
         struct clew_stack relation_ids;
-        struct clew_stack relation_tags;
-        #define TAG_K_LENGTH    512
-        #define TAG_V_LENGTH    512
-        #define TAG_S_LENGTH    (TAG_K_LENGTH + TAG_V_LENGTH)
-        char tag_k[512];
-        char tag_v[512];
-        char tag_s[1024];
+
+        struct clew_stack read_tags;
+        #define READ_TAG_K_LENGTH       512
+        #define READ_TAG_V_LENGTH       512
+        #define READ_TAG_S_LENGTH       (READ_TAG_K_LENGTH + READ_TAG_V_LENGTH)
+        char read_tag_k[512];
+        char read_tag_v[512];
+        char read_tag_s[1024];
 
 };
 
@@ -165,7 +164,7 @@ static int input_callback_node_start (struct clew_input *input, void *context)
         }
         clew_stack_push_uint32(&clew->read_state, CLEW_READ_STATE_NODE);
 
-        clew_stack_reset(&clew->node_tags);
+        clew_stack_reset(&clew->read_tags);
 
         return 0;
 bail:   return -1;
@@ -199,7 +198,7 @@ static int input_callback_way_start (struct clew_input *input, void *context)
         }
         clew_stack_push_uint32(&clew->read_state, CLEW_READ_STATE_WAY);
 
-        clew_stack_reset(&clew->way_tags);
+        clew_stack_reset(&clew->read_tags);
 
         return 0;
 bail:   return -1;
@@ -233,7 +232,7 @@ static int input_callback_relation_start (struct clew_input *input, void *contex
         }
         clew_stack_push_uint32(&clew->read_state, CLEW_READ_STATE_RELATION);
 
-        clew_stack_reset(&clew->relation_tags);
+        clew_stack_reset(&clew->read_tags);
 
         return 0;
 bail:   return -1;
@@ -261,11 +260,11 @@ static void parse_tag_fix_layer (char *k, char *v)
         (void) k;
         layer = atoi(v);
         if (layer == 0) {
-                snprintf(v, TAG_V_LENGTH, "layer_ground");
+                snprintf(v, READ_TAG_V_LENGTH, "layer_ground");
         } else if (layer > 0) {
-                snprintf(v, TAG_V_LENGTH, "layer_above_%d", layer);
+                snprintf(v, READ_TAG_V_LENGTH, "layer_above_%d", layer);
         } else {
-                snprintf(v, TAG_V_LENGTH, "layer_below_%d", -layer);
+                snprintf(v, READ_TAG_V_LENGTH, "layer_below_%d", -layer);
         }
 }
 
@@ -309,7 +308,6 @@ static int input_callback_tag_end (struct clew_input *input, void *context)
 {
         int rc;
         uint32_t tag;
-        struct clew_stack *tags;
 
         struct clew *clew = context;
 
@@ -321,42 +319,33 @@ static int input_callback_tag_end (struct clew_input *input, void *context)
         }
         clew_stack_pop(&clew->read_state);
 
-        switch (clew_stack_peek_uint32(&clew->read_state)) {
-                case CLEW_READ_STATE_NODE:      tags = &clew->node_tags;        break;
-                case CLEW_READ_STATE_WAY:       tags = &clew->way_tags;         break;
-                case CLEW_READ_STATE_RELATION:  tags = &clew->relation_tags;    break;
-                default:
-                        clew_errorf("read state is invalid, %d != %d || %d || %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_NODE, CLEW_READ_STATE_WAY, CLEW_READ_STATE_RELATION);
-                        goto bail;
-        }
-
-        if (strlen(clew->tag_k) <= 0) {
-                clew_debugf("k is invalid: %s = %s", clew->tag_k, clew->tag_v);
+        if (strlen(clew->read_tag_k) <= 0) {
+                clew_debugf("k is invalid: %s = %s", clew->read_tag_k, clew->read_tag_v);
                 goto out;
         }
-        if (strlen(clew->tag_v) <= 0) {
-                clew_debugf("v is invalid: %s = %s", clew->tag_k, clew->tag_v);
+        if (strlen(clew->read_tag_v) <= 0) {
+                clew_debugf("v is invalid: %s = %s", clew->read_tag_k, clew->read_tag_v);
                 goto out;
         }
 
-        parse_tag_fix(clew->tag_k, clew->tag_v);
-        snprintf(clew->tag_s, sizeof(clew->tag_s), "%s_%s", clew->tag_k, clew->tag_v);
-        tag = clew_tag_value(clew->tag_s);
+        parse_tag_fix(clew->read_tag_k, clew->read_tag_v);
+        snprintf(clew->read_tag_s, sizeof(clew->read_tag_s), "%s_%s", clew->read_tag_k, clew->read_tag_v);
+        tag = clew_tag_value(clew->read_tag_s);
         if (tag == clew_tag_unknown) {
-                //clew_todof("tag is invalid, '%s' = '%s'", clew->tag_k, clew->tag_v);
+                //clew_todof("tag is invalid, '%s' = '%s'", clew->read_tag_k, clew->read_tag_v);
                 goto out;
         }
-        rc = clew_stack_push_uint32(tags, tag);
+        rc = clew_stack_push_uint32(&clew->read_tags, tag);
         if (rc != 0) {
                 clew_errorf("can not add tag");
                 goto bail;
         }
 
-out:    clew->tag_k[0] = '\0';
-        clew->tag_v[0] = '\0';
+out:    clew->read_tag_k[0] = '\0';
+        clew->read_tag_v[0] = '\0';
         return 0;
-bail:   clew->tag_k[0] = '\0';
-        clew->tag_v[0] = '\0';
+bail:   clew->read_tag_k[0] = '\0';
+        clew->read_tag_v[0] = '\0';
         return -1;
 }
 
@@ -598,7 +587,7 @@ static int input_callback_k (struct clew_input *input, void *context, const char
                 goto bail;
         }
 
-        snprintf(clew->tag_k, sizeof(clew->tag_k), "%s", k);
+        snprintf(clew->read_tag_k, sizeof(clew->read_tag_k), "%s", k);
 
         return 0;
 bail:   return -1;
@@ -615,7 +604,7 @@ static int input_callback_v (struct clew_input *input, void *context, const char
                 goto bail;
         }
 
-        snprintf(clew->tag_v, sizeof(clew->tag_v), "%s", v);
+        snprintf(clew->read_tag_v, sizeof(clew->read_tag_v), "%s", v);
 
         return 0;
 bail:   return -1;
@@ -677,14 +666,13 @@ int main (int argc, char *argv[])
 
         clew->state             = CLEW_STATE_INITIAL;
         clew->read_state        = clew_stack_init(sizeof(uint32_t));
-        clew->node_ids          = clew_stack_init(sizeof(uint64_t));
-        clew->node_tags         = clew_stack_init(sizeof(uint32_t));
-        clew->way_ids           = clew_stack_init(sizeof(uint64_t));
-        clew->way_tags          = clew_stack_init(sizeof(uint32_t));
-        clew->relation_ids      = clew_stack_init(sizeof(uint64_t));
-        clew->relation_tags     = clew_stack_init(sizeof(uint32_t));
+        clew->read_tags         = clew_stack_init(sizeof(uint32_t));
 
         clew_stack_push_uint32(&clew->read_state, CLEW_READ_STATE_UNKNOWN);
+
+        clew->node_ids          = clew_stack_init(sizeof(uint64_t));
+        clew->way_ids           = clew_stack_init(sizeof(uint64_t));
+        clew->relation_ids      = clew_stack_init(sizeof(uint64_t));
 
         while (1) {
                 c = getopt_long(argc, argv, "i:o:e:k:d:n:w:r:v:h", g_long_options, &option_index);
@@ -864,11 +852,9 @@ out:
                 clew_stack_uninit(&clew->options.drop_tag_relation);
                 clew_stack_uninit(&clew->read_state);
                 clew_stack_uninit(&clew->node_ids);
-                clew_stack_uninit(&clew->node_tags);
                 clew_stack_uninit(&clew->way_ids);
-                clew_stack_uninit(&clew->way_tags);
                 clew_stack_uninit(&clew->relation_ids);
-                clew_stack_uninit(&clew->relation_tags);
+                clew_stack_uninit(&clew->read_tags);
                 free(clew);
         }
 
