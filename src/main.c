@@ -37,25 +37,25 @@
 #define OPTION_DROP_RELATIONS           0x406
 
 static struct option g_long_options[] = {
-	{ "help",	             no_argument,	0,	OPTION_HELP                     },
-	{ "input",	             required_argument,	0,	OPTION_INPUT                    },
-	{ "output",	             required_argument,	0,	OPTION_OUTPUT                   },
-	{ "expression",	             required_argument,	0,	OPTION_EXPRESSION               },
-	{ "keep-tag",                required_argument,	0,	OPTION_KEEP_TAG                 },
-	{ "keep-tag-node",           required_argument,	0,	OPTION_KEEP_TAG_NODE            },
-	{ "keep-tag-way",            required_argument,	0,	OPTION_KEEP_TAG_WAY             },
-	{ "keep-tag-relation",       required_argument,	0,      OPTION_KEEP_TAG_RELATION        },
-	{ "drop-tag",                required_argument,	0,	OPTION_DROP_TAG                 },
-	{ "drop-tag-node",           required_argument,	0,	OPTION_DROP_TAG_NODE            },
-	{ "drop-tag-way",            required_argument,	0,	OPTION_DROP_TAG_WAY             },
-	{ "drop-tag-relation",       required_argument,	0,      OPTION_DROP_TAG_RELATION        },
-	{ "keep-nodes",              required_argument,	0,	OPTION_KEEP_NODES               },
-	{ "keep-ways",               required_argument,	0,	OPTION_KEEP_WAYS                },
-	{ "keep-relations",          required_argument,	0,	OPTION_KEEP_RELATIONS           },
-	{ "drop-nodes",              required_argument,	0,	OPTION_DROP_NODES               },
-	{ "drop-ways",               required_argument,	0,	OPTION_DROP_WAYS                },
-	{ "drop-relations",          required_argument,	0,	OPTION_DROP_RELATIONS           },
-	{ 0,		             0,			0,	0                               }
+        { "help",                     no_argument,        0,        OPTION_HELP                     },
+        { "input",                     required_argument,        0,        OPTION_INPUT                    },
+        { "output",                     required_argument,        0,        OPTION_OUTPUT                   },
+        { "expression",                     required_argument,        0,        OPTION_EXPRESSION               },
+        { "keep-tag",                required_argument,        0,        OPTION_KEEP_TAG                 },
+        { "keep-tag-node",           required_argument,        0,        OPTION_KEEP_TAG_NODE            },
+        { "keep-tag-way",            required_argument,        0,        OPTION_KEEP_TAG_WAY             },
+        { "keep-tag-relation",       required_argument,        0,      OPTION_KEEP_TAG_RELATION        },
+        { "drop-tag",                required_argument,        0,        OPTION_DROP_TAG                 },
+        { "drop-tag-node",           required_argument,        0,        OPTION_DROP_TAG_NODE            },
+        { "drop-tag-way",            required_argument,        0,        OPTION_DROP_TAG_WAY             },
+        { "drop-tag-relation",       required_argument,        0,      OPTION_DROP_TAG_RELATION        },
+        { "keep-nodes",              required_argument,        0,        OPTION_KEEP_NODES               },
+        { "keep-ways",               required_argument,        0,        OPTION_KEEP_WAYS                },
+        { "keep-relations",          required_argument,        0,        OPTION_KEEP_RELATIONS           },
+        { "drop-nodes",              required_argument,        0,        OPTION_DROP_NODES               },
+        { "drop-ways",               required_argument,        0,        OPTION_DROP_WAYS                },
+        { "drop-relations",          required_argument,        0,        OPTION_DROP_RELATIONS           },
+        { 0,                             0,                        0,        0                               }
 };
 
 enum {
@@ -112,8 +112,12 @@ struct clew {
         struct clew_stack way_tags;
         struct clew_stack relation_ids;
         struct clew_stack relation_tags;
+        #define TAG_K_LENGTH    512
+        #define TAG_V_LENGTH    512
+        #define TAG_S_LENGTH    (TAG_K_LENGTH + TAG_V_LENGTH)
         char tag_k[512];
         char tag_v[512];
+        char tag_s[1024];
 
 };
 
@@ -251,6 +255,38 @@ static int input_callback_relation_end (struct clew_input *input, void *context)
 bail:   return -1;
 }
 
+static void parse_tag_fix_layer (char *k, char *v)
+{
+        int layer;
+        (void) k;
+        layer = atoi(v);
+        if (layer == 0) {
+                snprintf(v, TAG_V_LENGTH, "layer_ground");
+        } else if (layer > 0) {
+                snprintf(v, TAG_V_LENGTH, "layer_above_%d", layer);
+        } else {
+                snprintf(v, TAG_V_LENGTH, "layer_below_%d", -layer);
+        }
+}
+
+static void parse_tag_fix (char *k, char *v)
+{
+        char *c;
+        for (c = k; c && *c; c++) {
+                if (*c == '-') {
+                        *c = '_';
+                }
+        }
+        for (c = v; c && *c; c++) {
+                if (*c == '-') {
+                        *c = '_';
+                }
+        }
+        if (strcasecmp(k, "layer") == 0) {
+                parse_tag_fix_layer(k, v);
+        }
+}
+
 static int input_callback_tag_start (struct clew_input *input, void *context)
 {
         struct clew *clew = context;
@@ -271,6 +307,10 @@ bail:   return -1;
 
 static int input_callback_tag_end (struct clew_input *input, void *context)
 {
+        int rc;
+        uint32_t tag;
+        struct clew_stack *tags;
+
         struct clew *clew = context;
 
         (void) input;
@@ -281,8 +321,43 @@ static int input_callback_tag_end (struct clew_input *input, void *context)
         }
         clew_stack_pop(&clew->read_state);
 
+        switch (clew_stack_peek_uint32(&clew->read_state)) {
+                case CLEW_READ_STATE_NODE:      tags = &clew->node_tags;        break;
+                case CLEW_READ_STATE_WAY:       tags = &clew->way_tags;         break;
+                case CLEW_READ_STATE_RELATION:  tags = &clew->relation_tags;    break;
+                default:
+                        clew_errorf("read state is invalid, %d != %d || %d || %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_NODE, CLEW_READ_STATE_WAY, CLEW_READ_STATE_RELATION);
+                        goto bail;
+        }
+
+        if (strlen(clew->tag_k) <= 0) {
+                clew_debugf("k is invalid: %s = %s", clew->tag_k, clew->tag_v);
+                goto out;
+        }
+        if (strlen(clew->tag_v) <= 0) {
+                clew_debugf("v is invalid: %s = %s", clew->tag_k, clew->tag_v);
+                goto out;
+        }
+
+        parse_tag_fix(clew->tag_k, clew->tag_v);
+        snprintf(clew->tag_s, sizeof(clew->tag_s), "%s_%s", clew->tag_k, clew->tag_v);
+        tag = clew_tag_value(clew->tag_s);
+        if (tag == clew_tag_unknown) {
+                //clew_todof("unknown tag: '%s' = '%s'", clew->tag_k, clew->tag_v);
+                goto out;
+        }
+        rc = clew_stack_push_uint32(tags, tag);
+        if (rc != 0) {
+                clew_errorf("can not add tag");
+                goto bail;
+        }
+
+out:    clew->tag_k[0] = '\0';
+        clew->tag_v[0] = '\0';
         return 0;
-bail:   return -1;
+bail:   clew->tag_k[0] = '\0';
+        clew->tag_v[0] = '\0';
+        return -1;
 }
 
 static int input_callback_nd_start (struct clew_input *input, void *context)
@@ -557,8 +632,8 @@ static int input_callback_error (struct clew_input *input, void *context, unsign
 
 int main (int argc, char *argv[])
 {
-	int c;
-	int option_index;
+        int c;
+        int option_index;
 
         int rs;
         int rc;
@@ -611,12 +686,12 @@ int main (int argc, char *argv[])
 
         clew_stack_push_uint32(&clew->read_state, CLEW_READ_STATE_UNKNOWN);
 
-	while (1) {
-		c = getopt_long(argc, argv, "i:o:e:k:d:n:w:r:v:h", g_long_options, &option_index);
-		if (c == -1) {
-			break;
-		}
-		switch (c) {
+        while (1) {
+                c = getopt_long(argc, argv, "i:o:e:k:d:n:w:r:v:h", g_long_options, &option_index);
+                if (c == -1) {
+                        break;
+                }
+                switch (c) {
                         case OPTION_HELP:
                                 break;
                         case OPTION_INPUT:
@@ -711,7 +786,7 @@ int main (int argc, char *argv[])
                                 clew->options.drop_nodes = !!atoi(optarg);
                                 break;
                 }
-	}
+        }
 
         if (clew_stack_count(&clew->options.inputs) <= 0) {
                 clew_errorf("inputs is invalid, see help");
