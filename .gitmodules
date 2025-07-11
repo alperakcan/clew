@@ -13,3 +13,6 @@
 [submodule "3rdparty/protobuf-c"]
 	path = 3rdparty/protobuf-c
 	url = https://github.com/protobuf-c/protobuf-c.git
+[submodule "3rdparty/klib"]
+	path = 3rdparty/klib
+	url = https://github.com/attractivechaos/klib.git

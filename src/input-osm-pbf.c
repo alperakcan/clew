@@ -259,6 +259,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                 rc = input->callback_bounds_start(&input->backend, input->callback_context);
                                 if (rc < 0) {
                                         clew_errorf("input callback_bounds_start failed");
+                                        osmpbf__header_block__free_unpacked(header_block, NULL);
                                         goto bail;
                                 }
                         }
@@ -266,6 +267,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                 rc = input->callback_minlon(&input->backend, input->callback_context, header_block->bbox->left);
                                 if (rc < 0) {
                                         clew_errorf("input callback_minlon failed");
+                                        osmpbf__header_block__free_unpacked(header_block, NULL);
                                         goto bail;
                                 }
                         }
@@ -273,6 +275,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                 rc = input->callback_minlat(&input->backend, input->callback_context, header_block->bbox->top);
                                 if (rc < 0) {
                                         clew_errorf("input callback_minlat failed");
+                                        osmpbf__header_block__free_unpacked(header_block, NULL);
                                         goto bail;
                                 }
                         }
@@ -280,6 +283,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                 rc = input->callback_maxlon(&input->backend, input->callback_context, header_block->bbox->right);
                                 if (rc < 0) {
                                         clew_errorf("input callback_maxlon failed");
+                                        osmpbf__header_block__free_unpacked(header_block, NULL);
                                         goto bail;
                                 }
                         }
@@ -287,6 +291,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                 rc = input->callback_maxlat(&input->backend, input->callback_context, header_block->bbox->bottom);
                                 if (rc < 0) {
                                         clew_errorf("input callback_maxlat failed");
+                                        osmpbf__header_block__free_unpacked(header_block, NULL);
                                         goto bail;
                                 }
                         }
@@ -294,6 +299,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                 rc = input->callback_bounds_end(&input->backend, input->callback_context);
                                 if (rc < 0) {
                                         clew_errorf("input callback_bounds_end failed");
+                                        osmpbf__header_block__free_unpacked(header_block, NULL);
                                         goto bail;
                                 }
                         }
@@ -320,6 +326,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                 rc = input->callback_node_start(&input->backend, input->callback_context);
                                                 if (rc < 0) {
                                                         clew_errorf("input callback_node_start failed");
+                                                        osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                         goto bail;
                                                 }
                                         }
@@ -327,6 +334,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                 rc = input->callback_id(&input->backend, input->callback_context, id);
                                                 if (rc < 0) {
                                                         clew_errorf("input callback_id failed");
+                                                        osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                         goto bail;
                                                 }
                                         }
@@ -334,6 +342,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                 rc = input->callback_lon(&input->backend, input->callback_context, lon);
                                                 if (rc < 0) {
                                                         clew_errorf("input callback_lon failed");
+                                                        osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                         goto bail;
                                                 }
                                         }
@@ -341,6 +350,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                 rc = input->callback_lat(&input->backend, input->callback_context, lat);
                                                 if (rc < 0) {
                                                         clew_errorf("input callback_lat failed");
+                                                        osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                         goto bail;
                                                 }
                                         }
@@ -352,6 +362,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                                 rc = input->callback_tag_start(&input->backend, input->callback_context);
                                                                 if (rc < 0) {
                                                                         clew_errorf("input callback_tag_start failed");
+                                                                        osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                         goto bail;
                                                                 }
                                                         }
@@ -359,6 +370,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                                 rc = input->callback_k(&input->backend, input->callback_context, input->keybuff);
                                                                 if (rc < 0) {
                                                                         clew_errorf("input callback_k failed");
+                                                                        osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                         goto bail;
                                                                 }
                                                         }
@@ -366,6 +378,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                                 rc = input->callback_v(&input->backend, input->callback_context, input->valbuff);
                                                                 if (rc < 0) {
                                                                         clew_errorf("input callback_v failed");
+                                                                        osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                         goto bail;
                                                                 }
                                                         }
@@ -373,6 +386,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                                 rc = input->callback_tag_end(&input->backend, input->callback_context);
                                                                 if (rc < 0) {
                                                                         clew_errorf("input callback_tag_end failed");
+                                                                        osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                         goto bail;
                                                                 }
                                                         }
@@ -384,6 +398,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                 rc = input->callback_node_end(&input->backend, input->callback_context);
                                                 if (rc < 0) {
                                                         clew_errorf("input callback_node_end failed");
+                                                        osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                         goto bail;
                                                 }
                                         }
@@ -393,6 +408,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                 rc = input->callback_way_start(&input->backend, input->callback_context);
                                                 if (rc < 0) {
                                                         clew_errorf("input callback_way_start failed");
+                                                        osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                         goto bail;
                                                 }
                                         }
@@ -400,6 +416,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                 rc = input->callback_id(&input->backend, input->callback_context, primitive_group->ways[j]->id);
                                                 if (rc < 0) {
                                                         clew_errorf("input callback_id failed");
+                                                        osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                         goto bail;
                                                 }
                                         }
@@ -409,6 +426,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         rc = input->callback_nd_start(&input->backend, input->callback_context);
                                                         if (rc < 0) {
                                                                 clew_errorf("input callback_nd_start failed");
+                                                                osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                 goto bail;
                                                         }
                                                 }
@@ -416,6 +434,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         rc = input->callback_ref(&input->backend, input->callback_context, ref);
                                                         if (rc < 0) {
                                                                 clew_errorf("input callback_ref failed");
+                                                                osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                 goto bail;
                                                         }
                                                 }
@@ -423,6 +442,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         rc = input->callback_nd_end(&input->backend, input->callback_context);
                                                         if (rc < 0) {
                                                                 clew_errorf("input callback_nd_end failed");
+                                                                osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                 goto bail;
                                                         }
                                                 }
@@ -434,6 +454,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         rc = input->callback_tag_start(&input->backend, input->callback_context);
                                                         if (rc < 0) {
                                                                 clew_errorf("input callback_tag_start failed");
+                                                                osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                 goto bail;
                                                         }
                                                 }
@@ -441,6 +462,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         rc = input->callback_k(&input->backend, input->callback_context, input->keybuff);
                                                         if (rc < 0) {
                                                                 clew_errorf("input callback_k failed");
+                                                                osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                 goto bail;
                                                         }
                                                 }
@@ -448,6 +470,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         rc = input->callback_v(&input->backend, input->callback_context, input->valbuff);
                                                         if (rc < 0) {
                                                                 clew_errorf("input callback_v failed");
+                                                                osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                 goto bail;
                                                         }
                                                 }
@@ -455,6 +478,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         rc = input->callback_tag_end(&input->backend, input->callback_context);
                                                         if (rc < 0) {
                                                                 clew_errorf("input callback_tag_end failed");
+                                                                osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                 goto bail;
                                                         }
                                                 }
@@ -463,6 +487,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                 rc = input->callback_way_end(&input->backend, input->callback_context);
                                                 if (rc < 0) {
                                                         clew_errorf("input callback_way_end failed");
+                                                        osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                         goto bail;
                                                 }
                                         }
@@ -472,6 +497,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                 rc = input->callback_relation_start(&input->backend, input->callback_context);
                                                 if (rc < 0) {
                                                         clew_errorf("input callback_relation_start failed");
+                                                        osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                         goto bail;
                                                 }
                                         }
@@ -479,6 +505,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                 rc = input->callback_id(&input->backend, input->callback_context, primitive_group->relations[j]->id);
                                                 if (rc < 0) {
                                                         clew_errorf("input callback_id failed");
+                                                        osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                         goto bail;
                                                 }
                                         }
@@ -489,6 +516,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         rc = input->callback_member_start(&input->backend, input->callback_context);
                                                         if (rc < 0) {
                                                                 clew_errorf("input callback_member_start failed");
+                                                                osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                 goto bail;
                                                         }
                                                 }
@@ -496,6 +524,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         rc = input->callback_type(&input->backend, input->callback_context, (primitive_group->relations[j]->types[k] == 0) ? "node" : (primitive_group->relations[j]->types[k] == 1) ? "way" : (primitive_group->relations[j]->types[k] == 2) ? "relation" : "unknown");
                                                         if (rc < 0) {
                                                                 clew_errorf("input callback_type failed");
+                                                                osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                 goto bail;
                                                         }
                                                 }
@@ -503,6 +532,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         rc = input->callback_ref(&input->backend, input->callback_context, ref);
                                                         if (rc < 0) {
                                                                 clew_errorf("input callback_ref failed");
+                                                                osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                 goto bail;
                                                         }
                                                 }
@@ -510,6 +540,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         rc = input->callback_role(&input->backend, input->callback_context, input->rolebuff);
                                                         if (rc < 0) {
                                                                 clew_errorf("input callback_role failed");
+                                                                osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                 goto bail;
                                                         }
                                                 }
@@ -517,6 +548,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         rc = input->callback_member_end(&input->backend, input->callback_context);
                                                         if (rc < 0) {
                                                                 clew_errorf("input callback_member_end failed");
+                                                                osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                 goto bail;
                                                         }
                                                 }
@@ -528,6 +560,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         rc = input->callback_tag_start(&input->backend, input->callback_context);
                                                         if (rc < 0) {
                                                                 clew_errorf("input callback_tag_start failed");
+                                                                osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                 goto bail;
                                                         }
                                                 }
@@ -535,6 +568,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         rc = input->callback_k(&input->backend, input->callback_context, input->keybuff);
                                                         if (rc < 0) {
                                                                 clew_errorf("input callback_k failed");
+                                                                osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                 goto bail;
                                                         }
                                                 }
@@ -542,6 +576,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         rc = input->callback_v(&input->backend, input->callback_context, input->valbuff);
                                                         if (rc < 0) {
                                                                 clew_errorf("input callback_v failed");
+                                                                osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                 goto bail;
                                                         }
                                                 }
@@ -549,6 +584,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         rc = input->callback_tag_end(&input->backend, input->callback_context);
                                                         if (rc < 0) {
                                                                 clew_errorf("input callback_tag_end failed");
+                                                                osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                 goto bail;
                                                         }
                                                 }
@@ -557,6 +593,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                 rc = input->callback_relation_end(&input->backend, input->callback_context);
                                                 if (rc < 0) {
                                                         clew_errorf("input callback_relation_end failed");
+                                                        osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                         goto bail;
                                                 }
                                         }
@@ -581,6 +618,9 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
 finish: input->state = STATE_FINISHED;
         return 1;
 bail:   input->state = STATE_ERROR;
+        if (input->callback_error) {
+                input->callback_error(&input->backend, input->callback_context, CLEW_INPUT_ERROR_UNKNOWN);
+        }
         return -1;
 }
 

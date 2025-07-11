@@ -51,6 +51,7 @@ struct clew_input {
 	int (*callback_k) (struct clew_input *input, void *context, const char *k);
 	int (*callback_v) (struct clew_input *input, void *context, const char *v);
 
+        int error;
         int (*callback_error) (struct clew_input *input, void *context, unsigned int reason);
 
         void *callback_context;
@@ -753,6 +754,8 @@ static int clew_input_backend_callback_error (struct clew_input_backend *backend
                 goto bail;
         }
 
+        input->error = reason;
+
         if (input->callback_error != NULL) {
                 rc = input->callback_error(input, input->callback_context, reason);
                 if (rc != 0) {
@@ -909,6 +912,25 @@ bail:   return -1;
 }
 
 int clew_input_reset (struct clew_input *input)
+{
+        if (input == NULL) {
+                clew_errorf("input is invalid");
+                goto bail;
+        }
+        if (input->backend == NULL) {
+                clew_errorf("input is invalid");
+                goto bail;
+        }
+        if (input->backend->reset == NULL) {
+                clew_errorf("input is invalid");
+                goto bail;
+        }
+        input->error = 0;
+        return input->backend->reset(input->backend);
+bail:   return -1;
+}
+
+int clew_input_get_error (struct clew_input *input)
 {
         if (input == NULL) {
                 clew_errorf("input is invalid");

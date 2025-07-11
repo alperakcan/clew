@@ -1,6 +1,11 @@
 
 struct clew_input;
 
+enum {
+	CLEW_INPUT_ERROR_SUCCESS	= 0,
+	CLEW_INPUT_ERROR_UNKNOWN
+};
+
 struct clew_input_init_options {
         const char *path;
 
@@ -55,3 +60,5 @@ void clew_input_destroy (struct clew_input *input);
 
 int clew_input_read (struct clew_input *input);
 int clew_input_reset (struct clew_input *input);
+
+int clew_input_get_error (struct clew_input *input);

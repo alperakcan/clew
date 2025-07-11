@@ -21,6 +21,8 @@ clew_files-y += \
 	input-osm-pbf-osmformat.pb-c.c \
 	input-osm-pbf.c \
 	input.c \
+	stack.c \
+	tag.c \
 	main.c \
 
 clew_includes-y += \
@@ -60,6 +62,11 @@ input-osm-pbf-osmformat.pb-c.c input-osm-pbf-osmformat.pb-c.h: input-osm-pbf-osm
 	${Q}echo "  GEN        $*"
 	${Q}protoc-c input-osm-pbf-osmformat.proto --c_out=.
 
+tag.c: tag*.h Makefile tag.sh
+	${Q}printf "  GEN        `pwd`/$@\n"
+	${Q}sh ./tag.sh ./ > tag.c
+
 clean:
 	${Q}${RM} input-osm-pbf-fileformat.pb-c.c input-osm-pbf-fileformat.pb-c.h
 	${Q}${RM} input-osm-pbf-osmformat.pb-c.c input-osm-pbf-osmformat.pb-c.h
+	${Q}${RM} tag.c
