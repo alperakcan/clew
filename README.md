@@ -3,6 +3,7 @@ Clew is a semi-optimal route planning tool for adventure motor touring — (aka:
 
 # usage
 
+```
 clew usage:
 
   --input              / -i : input path
@@ -60,3 +61,4 @@ paths:
   highway_corridor     : For a hallway inside of a building.
   highway_path         : A non-specific path.
   highway_via_ferrata  : A via ferrata is a route equipped with fixed cables, stemples, ladders, and bridges in order to increase ease and security for climbers.
+```
