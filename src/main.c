@@ -9,6 +9,7 @@
 #include "debug.h"
 #include "input.h"
 #include "stack.h"
+#include "expression.h"
 #include "tag.h"
 
 #define OPTION_HELP                     'h'
@@ -104,6 +105,7 @@ struct clew {
         struct clew_options options;
 
         int state;
+        struct clew_expression *expression;
 
         struct clew_stack read_state;
         struct clew_stack node_ids;
@@ -119,6 +121,67 @@ struct clew {
         char read_tag_s[1024];
 
 };
+
+static void print_help (const char *pname)
+{
+	fprintf(stdout, "%s usage:\n", pname);
+	fprintf(stdout, "\n");
+	fprintf(stdout, "  --input              / -i : input path\n");
+	fprintf(stdout, "  --output             / -o: output path\n");
+	fprintf(stdout, "  --expression         / -e: filter expression\n");
+	fprintf(stdout, "  --keep-nodes         / -n: filter nodes (default: 0)\n");
+	fprintf(stdout, "  --keep-ways          / -w: filter ways (default: 0)\n");
+	fprintf(stdout, "  --keep-relations     / -r: filter relations (default: 0)\n");
+	fprintf(stdout, "  --keep-tag               : keep tag (default: 0)\n");
+	fprintf(stdout, "  --keep-tag-node          : keep node tag (default: 0)\n");
+	fprintf(stdout, "  --keep-tag-way           : keep way tag (default: 0)\n");
+	fprintf(stdout, "  --keep-tag-relation      : keep relation tag (default: 0)\n");
+	fprintf(stdout, "\n");
+	fprintf(stdout, "example:\n");
+	fprintf(stdout, "\n");
+	fprintf(stdout, "  %s --input input.osm.pbf --output output.pgx --expression expression\n", pname);
+	fprintf(stdout, "  %s --input input.osm.pbf --output output.pgx --expression highway_*\n", pname);
+	fprintf(stdout, "  %s --input input.osm.pbf --output output.pgx \n"
+			"    --keep_ways 1 \n"
+			"    --expression \"highway_motorway or highway_motorway_link or highway_trunk or highway_trunk_link or highway_primary\"\n"
+			"    --keep-tag highway_motorway --keep-tag highway_motorway_link\n"
+			"    --keep-tag highway_trunk --keep-tag highway_trunk_link\n"
+			"    --keep-tag highway_primary\n", pname);
+	fprintf(stdout, "\n");
+	fprintf(stdout, "roads:\n");
+        fprintf(stdout, "  highway_motorway    : A restricted access major divided highway, normally with 2 or more running lanes plus emergency hard shoulder. Equivalent to the Freeway, Autobahn, etc..\n");
+        fprintf(stdout, "  highway_trunk       : The most important roads in a country's system that aren't motorways. (Need not necessarily be a divided highway.\n");
+        fprintf(stdout, "  highway_primary     : The next most important roads in a country's system. (Often link larger towns.)\n");
+        fprintf(stdout, "  highway_secondary   : The next most important roads in a country's system. (Often link towns.)\n");
+        fprintf(stdout, "  highway_tertiary    : The next most important roads in a country's system. (Often link smaller towns and villages)\n");
+        fprintf(stdout, "  highway_unclassified: The least important through roads in a country's system – i.e. minor roads of a lower classification than tertiary, but which serve a purpose other than access to properties. (Often link villages and hamlets.)\n");
+        fprintf(stdout, "  highway_residential : Roads which serve as an access to housing, without function of connecting settlements. Often lined with housing.\n");
+	fprintf(stdout, "\n");
+	fprintf(stdout, "link roads:\n");
+        fprintf(stdout, "  highway_motorway_link : The link roads (sliproads/ramps) leading to/from a motorway from/to a motorway or lower class highway. Normally with the same motorway restrictions.\n");
+        fprintf(stdout, "  highway_trunk_link    : The link roads (sliproads/ramps) leading to/from a trunk road from/to a trunk road or lower class highway.\n");
+        fprintf(stdout, "  highway_primary_link  : The link roads (sliproads/ramps) leading to/from a primary road from/to a primary road or lower class highway.\n");
+        fprintf(stdout, "  highway_secondary_link: The link roads (sliproads/ramps) leading to/from a secondary road from/to a secondary road or lower class highway.\n");
+        fprintf(stdout, "  highway_tertiary_link : The link roads (sliproads/ramps) leading to/from a tertiary road from/to a tertiary road or lower class highway.\n");
+	fprintf(stdout, "\n");
+	fprintf(stdout, "special road types:\n");
+        fprintf(stdout, "  highway_living_street: For living streets, which are residential streets where pedestrians have legal priority over cars, speeds are kept very low.\n");
+        fprintf(stdout, "  highway_service      : For access roads to, or within an industrial estate, camp site, business park, car park, alleys, etc.\n");
+        fprintf(stdout, "  highway_pedestrian   : For roads used mainly/exclusively for pedestrians in shopping and some residential areas which may allow access by motorised vehicles only for very limited periods of the day.\n");
+        fprintf(stdout, "  highway_track        : Roads for mostly agricultural or forestry uses.\n");
+        fprintf(stdout, "  highway_bus_guideway : A busway where the vehicle guided by the way (though not a railway) and is not suitable for other traffic.\n");
+        fprintf(stdout, "  highway_escape       : For runaway truck ramps, runaway truck lanes, emergency escape ramps, or truck arrester beds.\n");
+        fprintf(stdout, "  highway_raceway      : A course or track for (motor) racing\n");
+        fprintf(stdout, "  highway_road         : A road/way/street/motorway/etc. of unknown type. It can stand for anything ranging from a footpath to a motorway.\n");
+        fprintf(stdout, "  highway_bus_way      : A dedicated roadway for bus rapid transit systems\n");
+	fprintf(stdout, "paths:\n");
+        fprintf(stdout, "  highway_footway      : For designated footpaths; i.e., mainly/exclusively for pedestrians. This includes walking tracks and gravel paths.\n");
+        fprintf(stdout, "  highway_bridleway    : For horse riders. Pedestrians are usually also permitted, cyclists may be permitted depending on local rules/laws. Motor vehicles are forbidden.\n");
+        fprintf(stdout, "  highway_steps        : For flights of steps (stairs) on footways.\n");
+        fprintf(stdout, "  highway_corridor     : For a hallway inside of a building.\n");
+        fprintf(stdout, "  highway_path         : A non-specific path.\n");
+        fprintf(stdout, "  highway_via_ferrata  : A via ferrata is a route equipped with fixed cables, stemples, ladders, and bridges in order to increase ease and security for climbers.\n");
+}
 
 static int input_callback_bounds_start (struct clew_input *input, void *context)
 {
@@ -681,7 +744,8 @@ int main (int argc, char *argv[])
                 }
                 switch (c) {
                         case OPTION_HELP:
-                                break;
+                                print_help(argv[0]);
+                                return 0;
                         case OPTION_INPUT:
                                 rc = clew_stack_push(&clew->options.inputs, &optarg);
                                 if (rc < 0) {
@@ -786,6 +850,12 @@ int main (int argc, char *argv[])
         }
         if (clew->options.expression == NULL) {
                 clew_errorf("expression is invalid, see help");
+                goto bail;
+        }
+
+        clew->expression = clew_expression_create(clew->options.expression);
+        if (clew->expression == NULL) {
+                clew_errorf("expression is invalid");
                 goto bail;
         }
 

@@ -22,6 +22,7 @@ clew_files-y += \
 	input-osm-pbf.c \
 	input.c \
 	stack.c \
+	expression.c \
 	tag.c \
 	main.c \
 
