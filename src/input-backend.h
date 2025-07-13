@@ -25,15 +25,15 @@ struct clew_input_backend_init_options {
 	int (*callback_member_start) (struct clew_input_backend *backend, void *context);
 	int (*callback_member_end) (struct clew_input_backend *backend, void *context);
 
-	int (*callback_minlon) (struct clew_input_backend *backend, void *context, uint32_t lon);
-	int (*callback_minlat) (struct clew_input_backend *backend, void *context, uint32_t lat);
-	int (*callback_maxlon) (struct clew_input_backend *backend, void *context, uint32_t lon);
-	int (*callback_maxlat) (struct clew_input_backend *backend, void *context, uint32_t lat);
+	int (*callback_minlon) (struct clew_input_backend *backend, void *context, int32_t lon);
+	int (*callback_minlat) (struct clew_input_backend *backend, void *context, int32_t lat);
+	int (*callback_maxlon) (struct clew_input_backend *backend, void *context, int32_t lon);
+	int (*callback_maxlat) (struct clew_input_backend *backend, void *context, int32_t lat);
 
 	int (*callback_id) (struct clew_input_backend *backend, void *context, uint64_t id);
 
-	int (*callback_lat) (struct clew_input_backend *backend, void *context, uint32_t lat);
-	int (*callback_lon) (struct clew_input_backend *backend, void *context, uint32_t lon);
+	int (*callback_lat) (struct clew_input_backend *backend, void *context, int32_t lat);
+	int (*callback_lon) (struct clew_input_backend *backend, void *context, int32_t lon);
 
 	int (*callback_ref) (struct clew_input_backend *backend, void *context, uint64_t ref);
 

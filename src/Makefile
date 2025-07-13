@@ -21,6 +21,8 @@ clew_files-y += \
 	input-osm-pbf-osmformat.pb-c.c \
 	input-osm-pbf.c \
 	input.c \
+	bound.c \
+	point.c \
 	stack.c \
 	expression.c \
 	tag.c \
@@ -47,7 +49,8 @@ clew_cxxflags-y += \
 
 clew_ldflags-y += \
 	-lprotobuf-c \
-	-lz
+	-lz \
+	-lm
 
 dist.dir        = ../dist
 dist.base       = clew

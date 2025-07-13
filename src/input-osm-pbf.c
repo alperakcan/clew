@@ -48,15 +48,15 @@ struct clew_input_osm_pbf {
 	int (*callback_member_start) (struct clew_input_backend *backend, void *context);
 	int (*callback_member_end) (struct clew_input_backend *backend, void *context);
 
-	int (*callback_minlon) (struct clew_input_backend *backend, void *context, uint32_t lon);
-	int (*callback_minlat) (struct clew_input_backend *backend, void *context, uint32_t lat);
-	int (*callback_maxlon) (struct clew_input_backend *backend, void *context, uint32_t lon);
-	int (*callback_maxlat) (struct clew_input_backend *backend, void *context, uint32_t lat);
+	int (*callback_minlon) (struct clew_input_backend *backend, void *context, int32_t lon);
+	int (*callback_minlat) (struct clew_input_backend *backend, void *context, int32_t lat);
+	int (*callback_maxlon) (struct clew_input_backend *backend, void *context, int32_t lon);
+	int (*callback_maxlat) (struct clew_input_backend *backend, void *context, int32_t lat);
 
 	int (*callback_id) (struct clew_input_backend *backend, void *context, uint64_t id);
 
-	int (*callback_lat) (struct clew_input_backend *backend, void *context, uint32_t lat);
-	int (*callback_lon) (struct clew_input_backend *backend, void *context, uint32_t lon);
+	int (*callback_lat) (struct clew_input_backend *backend, void *context, int32_t lat);
+	int (*callback_lon) (struct clew_input_backend *backend, void *context, int32_t lon);
 
 	int (*callback_ref) (struct clew_input_backend *backend, void *context, uint64_t ref);
 
@@ -264,7 +264,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                 }
                         }
                         if (input->callback_minlon != NULL) {
-                                rc = input->callback_minlon(&input->backend, input->callback_context, header_block->bbox->left);
+                                rc = input->callback_minlon(&input->backend, input->callback_context, header_block->bbox->left / 100);
                                 if (rc < 0) {
                                         clew_errorf("input callback_minlon failed");
                                         osmpbf__header_block__free_unpacked(header_block, NULL);
@@ -272,7 +272,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                 }
                         }
                         if (input->callback_minlat != NULL) {
-                                rc = input->callback_minlat(&input->backend, input->callback_context, header_block->bbox->top);
+                                rc = input->callback_minlat(&input->backend, input->callback_context, header_block->bbox->top / 100);
                                 if (rc < 0) {
                                         clew_errorf("input callback_minlat failed");
                                         osmpbf__header_block__free_unpacked(header_block, NULL);
@@ -280,7 +280,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                 }
                         }
                         if (input->callback_maxlon != NULL) {
-                                rc = input->callback_maxlon(&input->backend, input->callback_context, header_block->bbox->right);
+                                rc = input->callback_maxlon(&input->backend, input->callback_context, header_block->bbox->right / 100);
                                 if (rc < 0) {
                                         clew_errorf("input callback_maxlon failed");
                                         osmpbf__header_block__free_unpacked(header_block, NULL);
@@ -288,7 +288,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                 }
                         }
                         if (input->callback_maxlat != NULL) {
-                                rc = input->callback_maxlat(&input->backend, input->callback_context, header_block->bbox->bottom);
+                                rc = input->callback_maxlat(&input->backend, input->callback_context, header_block->bbox->bottom / 100);
                                 if (rc < 0) {
                                         clew_errorf("input callback_maxlat failed");
                                         osmpbf__header_block__free_unpacked(header_block, NULL);
@@ -311,8 +311,8 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                         uint64_t j;
                         uint64_t k;
                         uint64_t id;
-                        uint64_t lat;
-                        uint64_t lon;
+                        int32_t lat;
+                        int32_t lon;
                         uint64_t ref;
                         OSMPBF__PrimitiveBlock *primitive_block;
                         primitive_block = osmpbf__primitive_block__unpack(NULL, input->blob->raw_size, input->data);

@@ -1,5 +1,6 @@
 
 subdir-y += \
+	clipper2-build \
 	rapidjson-build \
 	shapelib-build \
 	protobuf-c-build

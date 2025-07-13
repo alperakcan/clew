@@ -15,16 +15,6 @@ struct clew_stack {
         uint8_t *buffer;
 };
 
-static inline struct clew_stack clew_stack_init (uint64_t size) {
-        return (struct clew_stack) {
-                .size = size,
-                .grow = 4096,
-                .count = 0,
-                .avail = 0,
-                .buffer = NULL
-        };
-}
-
 static inline struct clew_stack clew_stack_init2 (uint64_t size, uint64_t grow) {
         return (struct clew_stack) {
                 .size = size,
@@ -35,6 +25,10 @@ static inline struct clew_stack clew_stack_init2 (uint64_t size, uint64_t grow) 
         };
 }
 
+static inline struct clew_stack clew_stack_init (uint64_t size) {
+        return clew_stack_init2(size, 4096);
+}
+
 static inline void clew_stack_uninit (struct clew_stack *stack)
 {
         if (stack == NULL) {
@@ -43,6 +37,9 @@ static inline void clew_stack_uninit (struct clew_stack *stack)
         if (stack->buffer != NULL) {
                 free(stack->buffer);
         }
+        stack->buffer = NULL;
+        stack->count  = 0;
+        stack->avail  = 0;
 }
 
 static inline uint64_t clew_stack_calculate_resize (uint64_t current, uint64_t request, uint64_t grow)
@@ -117,6 +114,59 @@ static inline int clew_stack_push (struct clew_stack *stack, const void *elem)
         }
         memcpy(stack->buffer + stack->count++ * stack->size, elem, stack->size);
         return 0;
+}
+
+static inline int clew_stack_push_sorted (struct clew_stack *stack, const void *elem, int (*compare)(const void *, const void *))
+{
+        size_t lo = 0, hi = stack->count;
+        while (lo < hi) {
+                size_t mid = lo + (hi - lo) / 2;
+                void *mid_elem = stack->buffer + mid * stack->size;
+                int cmp = compare(elem, mid_elem);
+                if (cmp < 0)
+                        hi = mid;
+                else
+                        lo = mid + 1;
+        }
+
+        // Insert at position `lo`
+        int rc = clew_stack_reserve(stack, stack->count + 1);
+        if (rc != 0) return -1;
+
+        void *dst = stack->buffer + (lo + 1) * stack->size;
+        void *src = stack->buffer + lo * stack->size;
+        memmove(dst, src, (stack->count - lo) * stack->size);
+        memcpy(src, elem, stack->size);
+        stack->count += 1;
+        return 0;
+}
+
+static inline int clew_stack_push_sorted_unique (struct clew_stack *stack, const void *elem, int (*compare)(const void *, const void *))
+{
+        size_t lo = 0, hi = stack->count;
+        while (lo < hi) {
+                size_t mid = lo + (hi - lo) / 2;
+                void *mid_elem = stack->buffer + mid * stack->size;
+                int cmp = compare(elem, mid_elem);
+                if (cmp == 0)
+                        return 0; // Already exists, do not insert
+                if (cmp < 0)
+                        hi = mid;
+                else
+                        lo = mid + 1;
+        }
+
+        // Insert at position `lo`
+        int rc = clew_stack_reserve(stack, stack->count + 1);
+        if (rc != 0) return -1;
+
+        // Shift elements
+        void *dst = stack->buffer + (lo + 1) * stack->size;
+        void *src = stack->buffer + lo * stack->size;
+        memmove(dst, src, (stack->count - lo) * stack->size);
+        memcpy(src, elem, stack->size);
+        stack->count += 1;
+        return 1; // Inserted
 }
 
 static inline void * clew_stack_pop (struct clew_stack *stack)
@@ -195,47 +245,57 @@ static inline void * clew_stack_search (const struct clew_stack *stack, const vo
 }
 
 #define CLEW_STACK_API_FOR_TYPE(name, type) \
-        static inline int clew_stack_push_ ## name (struct clew_stack *stack, type elem)        \
-        {                                                                                       \
-                return clew_stack_push(stack, &elem);                                           \
-        }                                                                                       \
-                                                                                                \
-        static inline type clew_stack_pop_ ## name (struct clew_stack *stack)                   \
-        {                                                                                       \
-                return *(type *) clew_stack_pop(stack);                                         \
-        }                                                                                       \
-                                                                                                \
-        static inline type clew_stack_at_ ## name (const struct clew_stack *stack, uint64_t at) \
-        {                                                                                       \
-                void *elem;                                                                     \
-                elem = clew_stack_at(stack, at);                                                \
-                return elem ? *(type *) elem : 0;                                      \
-        }                                                                                       \
-                                                                                                \
-        static inline type clew_stack_peek_ ## name (const struct clew_stack *stack)            \
-        {                                                                                       \
-                void *elem;                                                                     \
-                elem = clew_stack_peek(stack);                                                  \
-                return elem ? (*(type *) elem) : 0;                                    \
-        }                                                                                       \
-                                                                                                \
-        static inline int clew_stack_compare_ ## name (const void *a, const void *b)            \
-        {                                                                                       \
-                const type *t1 = (const type *) a;                                              \
-                const type *t2 = (const type *) b;                                              \
-                return *t1 - *t2;                                                               \
-        }                                                                                       \
-                                                                                                \
-        static inline void clew_stack_sort_ ## name (const struct clew_stack *stack)            \
-        {                                                                                       \
-                clew_stack_sort(stack, clew_stack_compare_ ## name);                            \
-        }                                                                                       \
-                                                                                                \
-        static inline uint64_t clew_stack_search_ ## name (const struct clew_stack *stack, type key)    \
-        {                                                                                               \
-                uint8_t *elem;                                                                          \
-                elem = clew_stack_search(stack, &key, clew_stack_compare_ ## name);                     \
-                return (elem == NULL) ? UINT64_MAX : ((elem - stack->buffer) / stack->size);            \
+        static inline int clew_stack_compare_ ## name (const void *a, const void *b)                            \
+        {                                                                                                       \
+                const type *t1 = (const type *) a;                                                              \
+                const type *t2 = (const type *) b;                                                              \
+                return *t1 - *t2;                                                                               \
+        }                                                                                                       \
+                                                                                                                \
+        static inline int clew_stack_push_ ## name (struct clew_stack *stack, type elem)                        \
+        {                                                                                                       \
+                return clew_stack_push(stack, &elem);                                                           \
+        }                                                                                                       \
+                                                                                                                \
+        static inline int clew_stack_push_ ## name ## _sorted (struct clew_stack *stack, type elem)             \
+        {                                                                                                       \
+                return clew_stack_push_sorted(stack, &elem, clew_stack_compare_ ## name);                       \
+        }                                                                                                       \
+                                                                                                                \
+        static inline int clew_stack_push_ ## name ## _sorted_unique (struct clew_stack *stack, type elem)      \
+        {                                                                                                       \
+                return clew_stack_push_sorted_unique(stack, &elem, clew_stack_compare_ ## name);                \
+        }                                                                                                       \
+                                                                                                                \
+        static inline type clew_stack_pop_ ## name (struct clew_stack *stack)                                   \
+        {                                                                                                       \
+                return *(type *) clew_stack_pop(stack);                                                         \
+        }                                                                                                       \
+                                                                                                                \
+        static inline type clew_stack_at_ ## name (const struct clew_stack *stack, uint64_t at)                 \
+        {                                                                                                       \
+                void *elem;                                                                                     \
+                elem = clew_stack_at(stack, at);                                                                \
+                return elem ? *(type *) elem : 0;                                                               \
+        }                                                                                                       \
+                                                                                                                \
+        static inline type clew_stack_peek_ ## name (const struct clew_stack *stack)                            \
+        {                                                                                                       \
+                void *elem;                                                                                     \
+                elem = clew_stack_peek(stack);                                                                  \
+                return elem ? (*(type *) elem) : 0;                                                             \
+        }                                                                                                       \
+                                                                                                                \
+        static inline void clew_stack_sort_ ## name (const struct clew_stack *stack)                            \
+        {                                                                                                       \
+                clew_stack_sort(stack, clew_stack_compare_ ## name);                                            \
+        }                                                                                                       \
+                                                                                                                \
+        static inline uint64_t clew_stack_search_ ## name (const struct clew_stack *stack, type key)            \
+        {                                                                                                       \
+                uint8_t *elem;                                                                                  \
+                elem = clew_stack_search(stack, &key, clew_stack_compare_ ## name);                             \
+                return (elem == NULL) ? UINT64_MAX : ((elem - stack->buffer) / stack->size);                    \
         }
 
 CLEW_STACK_API_FOR_TYPE(int32, int32_t)
