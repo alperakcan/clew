@@ -21,6 +21,7 @@
 #define EXPRESSION_SIZE_MAX     (32 * 1024)
 
 struct clew_expression {
+        char *orig;
         char *text;
         unsigned long long count;
         unsigned long long ors;
@@ -29,7 +30,7 @@ struct clew_expression {
         uint32_t postfix[0];
 };
 
-static struct clew_expression * clew_expression_create_actual (const char *from)
+static struct clew_expression * clew_expression_create_actual (const char *orig, const char *from)
 {
         int i;
         size_t w;
@@ -115,6 +116,11 @@ static struct clew_expression * clew_expression_create_actual (const char *from)
         *operators = clew_tag_unknown;
         expression = (struct clew_expression *) malloc(sizeof(struct clew_expression) + (sizeof(uint32_t) * (w + 1)));
         if (unlikely(expression == NULL)) {
+                clew_errorf("can not allocate memory");
+                goto bail;
+        }
+        expression->orig = strdup(orig);
+        if (expression->orig == NULL) {
                 clew_errorf("can not allocate memory");
                 goto bail;
         }
@@ -267,6 +273,9 @@ static struct clew_expression * clew_expression_create_actual (const char *from)
         free(current);
         return expression;
 bail:   if (expression != NULL) {
+                if (expression->orig != NULL) {
+                        free(expression->orig);
+                }
                 if (expression->text != NULL) {
                         free(expression->text);
                 }
@@ -282,6 +291,14 @@ bail:   if (expression != NULL) {
                 free(in);
         }
         return NULL;
+}
+
+const char * clew_expression_orig (struct clew_expression *expression)
+{
+        if (expression == NULL) {
+                return NULL;
+        }
+        return expression->orig;
 }
 
 const char * clew_expression_text (struct clew_expression *expression)
@@ -433,9 +450,11 @@ wild_restart:
         }
         clew_debugf("expression: '%s'", expression);
         clew_debugf("str: '%s'", ptr);
-        rc = clew_expression_create_actual(ptr);
+        rc = clew_expression_create_actual(expression, ptr);
         if (unlikely(rc == NULL)) {
                 clew_errorf("can not create expression");
+                free(str);
+                return NULL;
         }
         //clew_expression_create_actual("A and ( B or C and D ) or ( E ) ");
         //clew_expression_create_actual("A and B or C ");
@@ -449,6 +468,7 @@ void clew_expression_destroy (struct clew_expression *expression)
         if (unlikely(expression == NULL)) {
                 return;
         }
+        free(expression->orig);
         free(expression->text);
         free(expression);
 }

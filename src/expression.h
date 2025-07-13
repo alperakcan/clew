@@ -6,6 +6,7 @@ struct clew_expression;
 struct clew_expression * clew_expression_create (const char *expression);
 void clew_expression_destroy (struct clew_expression *expression);
 
+const char * clew_expression_orig (struct clew_expression *expression);
 const char * clew_expression_text (struct clew_expression *expression);
 
 int clew_expression_match (

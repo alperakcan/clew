@@ -209,14 +209,14 @@ static inline void * clew_stack_search (const struct clew_stack *stack, const vo
         {                                                                                       \
                 void *elem;                                                                     \
                 elem = clew_stack_at(stack, at);                                                \
-                return elem ? *(type *) elem : UINT32_MAX;                                      \
+                return elem ? *(type *) elem : 0;                                      \
         }                                                                                       \
                                                                                                 \
         static inline type clew_stack_peek_ ## name (const struct clew_stack *stack)            \
         {                                                                                       \
                 void *elem;                                                                     \
                 elem = clew_stack_peek(stack);                                                  \
-                return elem ? (*(type *) elem) : UINT32_MAX;                                    \
+                return elem ? (*(type *) elem) : 0;                                    \
         }                                                                                       \
                                                                                                 \
         static inline int clew_stack_compare_ ## name (const void *a, const void *b)            \
@@ -238,5 +238,7 @@ static inline void * clew_stack_search (const struct clew_stack *stack, const vo
                 return (elem == NULL) ? UINT64_MAX : ((elem - stack->buffer) / stack->size);            \
         }
 
+CLEW_STACK_API_FOR_TYPE(int32, int32_t)
+CLEW_STACK_API_FOR_TYPE(int64, int64_t)
 CLEW_STACK_API_FOR_TYPE(uint32, uint32_t)
 CLEW_STACK_API_FOR_TYPE(uint64, uint64_t)

@@ -16,3 +16,6 @@
 [submodule "3rdparty/klib"]
 	path = 3rdparty/klib
 	url = https://github.com/attractivechaos/klib.git
+[submodule "3rdparty/clipper2"]
+	path = 3rdparty/clipper2
+	url = https://github.com/AngusJohnson/Clipper2.git

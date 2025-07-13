@@ -17,7 +17,9 @@
 #define OPTION_INPUT                    'i'
 #define OPTION_OUTPUT                   'o'
 
+#define OPTION_CLIP                     'c'
 #define OPTION_FILTER                   'f'
+#define OPTION_POINTS                   'p'
 
 #define OPTION_KEEP_TAGS                'k'
 #define OPTION_KEEP_TAGS_NODE           0x201
@@ -41,7 +43,9 @@ static struct option g_long_options[] = {
         { "help",               no_argument,            0,      OPTION_HELP                     },
         { "input",              required_argument,      0,      OPTION_INPUT                    },
         { "output",             required_argument,      0,      OPTION_OUTPUT                   },
+        { "clip",               required_argument,      0,      OPTION_CLIP                     },
         { "filter",             required_argument,      0,      OPTION_FILTER                   },
+        { "points",             required_argument,      0,      OPTION_POINTS                   },
         { "keep-tags",          required_argument,      0,      OPTION_KEEP_TAGS                },
         { "keep-tags-node",     required_argument,      0,      OPTION_KEEP_TAGS_NODE           },
         { "keep-tags-way",      required_argument,      0,      OPTION_KEEP_TAGS_WAY            },
@@ -86,6 +90,8 @@ enum {
 struct clew_options {
         struct clew_stack inputs;
         const char *output;
+        struct clew_stack clip;
+        struct clew_stack points;
         struct clew_expression *filter;
         struct clew_expression *keep_tags;
         struct clew_expression *keep_tags_node;
@@ -131,7 +137,9 @@ static void print_help (const char *pname)
 	fprintf(stdout, "\n");
 	fprintf(stdout, "  --input              / -i : input path\n");
 	fprintf(stdout, "  --output             / -o: output path\n");
-	fprintf(stdout, "  --expression         / -e: filter expression (default: \"\")\n");
+	fprintf(stdout, "  --clip               / -c: clip path, ex: lon1,lat1 lon2,lat2 ... (default: \"\")\n");
+	fprintf(stdout, "  --filter             / -f: filter expression (default: \"\")\n");
+	fprintf(stdout, "  --points             / -p: points to visit, ex: lon1,lat1 lon2,lat2 ... (default: \"\")\n");
 	fprintf(stdout, "  --keep-nodes         / -n: filter nodes (default: 0)\n");
 	fprintf(stdout, "  --keep-ways          / -w: filter ways (default: 0)\n");
 	fprintf(stdout, "  --keep-relations     / -r: filter relations (default: 0)\n");
@@ -142,23 +150,19 @@ static void print_help (const char *pname)
 	fprintf(stdout, "\n");
 	fprintf(stdout, "example:\n");
 	fprintf(stdout, "\n");
-	fprintf(stdout, "  %s --input input.osm.pbf --output output.pgx --expression expression\n", pname);
-	fprintf(stdout, "  %s --input input.osm.pbf --output output.pgx --expression highway_*\n", pname);
+	fprintf(stdout, "  %s --input input.osm.pbf --output output.pgx --filter expression\n", pname);
 	fprintf(stdout, "  %s --input input.osm.pbf --output output.pgx \n"
-			"    --keep_ways 1 \n"
-			"    --expression \"highway_motorway or highway_motorway_link or highway_trunk or highway_trunk_link or highway_primary\"\n"
-			"    --keep-tag highway_motorway --keep-tag highway_motorway_link\n"
-			"    --keep-tag highway_trunk --keep-tag highway_trunk_link\n"
-			"    --keep-tag highway_primary\n", pname);
+			"    --filter \"highway_motorway or highway_motorway_link or highway_trunk or highway_trunk_link or highway_primary\"\n"
+			"    --keep-tags \"highway_motorway or highway_motorway_link or highway_trunk --keep-tag highway_trunk_link or highway_primary\n", pname);
 	fprintf(stdout, "\n");
 	fprintf(stdout, "roads:\n");
-        fprintf(stdout, "  highway_motorway    : A restricted access major divided highway, normally with 2 or more running lanes plus emergency hard shoulder. Equivalent to the Freeway, Autobahn, etc..\n");
-        fprintf(stdout, "  highway_trunk       : The most important roads in a country's system that aren't motorways. (Need not necessarily be a divided highway.\n");
-        fprintf(stdout, "  highway_primary     : The next most important roads in a country's system. (Often link larger towns.)\n");
-        fprintf(stdout, "  highway_secondary   : The next most important roads in a country's system. (Often link towns.)\n");
-        fprintf(stdout, "  highway_tertiary    : The next most important roads in a country's system. (Often link smaller towns and villages)\n");
-        fprintf(stdout, "  highway_unclassified: The least important through roads in a country's system – i.e. minor roads of a lower classification than tertiary, but which serve a purpose other than access to properties. (Often link villages and hamlets.)\n");
-        fprintf(stdout, "  highway_residential : Roads which serve as an access to housing, without function of connecting settlements. Often lined with housing.\n");
+        fprintf(stdout, "  highway_motorway      : A restricted access major divided highway, normally with 2 or more running lanes plus emergency hard shoulder. Equivalent to the Freeway, Autobahn, etc..\n");
+        fprintf(stdout, "  highway_trunk         : The most important roads in a country's system that aren't motorways. (Need not necessarily be a divided highway.\n");
+        fprintf(stdout, "  highway_primary       : The next most important roads in a country's system. (Often link larger towns.)\n");
+        fprintf(stdout, "  highway_secondary     : The next most important roads in a country's system. (Often link towns.)\n");
+        fprintf(stdout, "  highway_tertiary      : The next most important roads in a country's system. (Often link smaller towns and villages)\n");
+        fprintf(stdout, "  highway_unclassified  : The least important through roads in a country's system – i.e. minor roads of a lower classification than tertiary, but which serve a purpose other than access to properties. (Often link villages and hamlets.)\n");
+        fprintf(stdout, "  highway_residential   : Roads which serve as an access to housing, without function of connecting settlements. Often lined with housing.\n");
 	fprintf(stdout, "\n");
 	fprintf(stdout, "link roads:\n");
         fprintf(stdout, "  highway_motorway_link : The link roads (sliproads/ramps) leading to/from a motorway from/to a motorway or lower class highway. Normally with the same motorway restrictions.\n");
@@ -168,22 +172,23 @@ static void print_help (const char *pname)
         fprintf(stdout, "  highway_tertiary_link : The link roads (sliproads/ramps) leading to/from a tertiary road from/to a tertiary road or lower class highway.\n");
 	fprintf(stdout, "\n");
 	fprintf(stdout, "special road types:\n");
-        fprintf(stdout, "  highway_living_street: For living streets, which are residential streets where pedestrians have legal priority over cars, speeds are kept very low.\n");
-        fprintf(stdout, "  highway_service      : For access roads to, or within an industrial estate, camp site, business park, car park, alleys, etc.\n");
-        fprintf(stdout, "  highway_pedestrian   : For roads used mainly/exclusively for pedestrians in shopping and some residential areas which may allow access by motorised vehicles only for very limited periods of the day.\n");
-        fprintf(stdout, "  highway_track        : Roads for mostly agricultural or forestry uses.\n");
-        fprintf(stdout, "  highway_bus_guideway : A busway where the vehicle guided by the way (though not a railway) and is not suitable for other traffic.\n");
-        fprintf(stdout, "  highway_escape       : For runaway truck ramps, runaway truck lanes, emergency escape ramps, or truck arrester beds.\n");
-        fprintf(stdout, "  highway_raceway      : A course or track for (motor) racing\n");
-        fprintf(stdout, "  highway_road         : A road/way/street/motorway/etc. of unknown type. It can stand for anything ranging from a footpath to a motorway.\n");
-        fprintf(stdout, "  highway_bus_way      : A dedicated roadway for bus rapid transit systems\n");
+        fprintf(stdout, "  highway_living_street : For living streets, which are residential streets where pedestrians have legal priority over cars, speeds are kept very low.\n");
+        fprintf(stdout, "  highway_service       : For access roads to, or within an industrial estate, camp site, business park, car park, alleys, etc.\n");
+        fprintf(stdout, "  highway_pedestrian    : For roads used mainly/exclusively for pedestrians in shopping and some residential areas which may allow access by motorised vehicles only for very limited periods of the day.\n");
+        fprintf(stdout, "  highway_track         : Roads for mostly agricultural or forestry uses.\n");
+        fprintf(stdout, "  highway_bus_guideway  : A busway where the vehicle guided by the way (though not a railway) and is not suitable for other traffic.\n");
+        fprintf(stdout, "  highway_escape        : For runaway truck ramps, runaway truck lanes, emergency escape ramps, or truck arrester beds.\n");
+        fprintf(stdout, "  highway_raceway       : A course or track for (motor) racing\n");
+        fprintf(stdout, "  highway_road          : A road/way/street/motorway/etc. of unknown type. It can stand for anything ranging from a footpath to a motorway.\n");
+        fprintf(stdout, "  highway_bus_way       : A dedicated roadway for bus rapid transit systems\n");
+	fprintf(stdout, "\n");
 	fprintf(stdout, "paths:\n");
-        fprintf(stdout, "  highway_footway      : For designated footpaths; i.e., mainly/exclusively for pedestrians. This includes walking tracks and gravel paths.\n");
-        fprintf(stdout, "  highway_bridleway    : For horse riders. Pedestrians are usually also permitted, cyclists may be permitted depending on local rules/laws. Motor vehicles are forbidden.\n");
-        fprintf(stdout, "  highway_steps        : For flights of steps (stairs) on footways.\n");
-        fprintf(stdout, "  highway_corridor     : For a hallway inside of a building.\n");
-        fprintf(stdout, "  highway_path         : A non-specific path.\n");
-        fprintf(stdout, "  highway_via_ferrata  : A via ferrata is a route equipped with fixed cables, stemples, ladders, and bridges in order to increase ease and security for climbers.\n");
+        fprintf(stdout, "  highway_footway       : For designated footpaths; i.e., mainly/exclusively for pedestrians. This includes walking tracks and gravel paths.\n");
+        fprintf(stdout, "  highway_bridleway     : For horse riders. Pedestrians are usually also permitted, cyclists may be permitted depending on local rules/laws. Motor vehicles are forbidden.\n");
+        fprintf(stdout, "  highway_steps         : For flights of steps (stairs) on footways.\n");
+        fprintf(stdout, "  highway_corridor      : For a hallway inside of a building.\n");
+        fprintf(stdout, "  highway_path          : A non-specific path.\n");
+        fprintf(stdout, "  highway_via_ferrata   : A via ferrata is a route equipped with fixed cables, stemples, ladders, and bridges in order to increase ease and security for climbers.\n");
 }
 
 static int tag_expression_match_has (void *context, uint32_t tag)
@@ -822,7 +827,9 @@ int main (int argc, char *argv[])
 
         clew->options.inputs                    = clew_stack_init(sizeof(const char *));
         clew->options.output                    = NULL;
+        clew->options.clip                      = clew_stack_init(sizeof(int32_t));
         clew->options.filter                    = NULL;
+        clew->options.points                    = clew_stack_init(sizeof(int32_t));
         clew->options.keep_tags                 = NULL;
         clew->options.keep_tags_node            = NULL;
         clew->options.keep_tags_way             = NULL;
@@ -831,12 +838,12 @@ int main (int argc, char *argv[])
         clew->options.drop_tags_node            = NULL;
         clew->options.drop_tags_way             = NULL;
         clew->options.drop_tags_relation        = NULL;
-        clew->options.keep_nodes                = -1;
-        clew->options.keep_ways                 = -1;
-        clew->options.keep_relations            = -1;
-        clew->options.drop_nodes                = -1;
-        clew->options.drop_ways                 = -1;
-        clew->options.drop_relations            = -1;
+        clew->options.keep_nodes                = 1;
+        clew->options.keep_ways                 = 1;
+        clew->options.keep_relations            = 1;
+        clew->options.drop_nodes                = 0;
+        clew->options.drop_ways                 = 0;
+        clew->options.drop_relations            = 0;
 
         clew->state             = CLEW_STATE_INITIAL;
 
@@ -849,7 +856,7 @@ int main (int argc, char *argv[])
         clew->relation_ids      = clew_stack_init(sizeof(uint64_t));
 
         while (1) {
-                c = getopt_long(argc, argv, "i:o:f:k:n:w:r:v:h", g_long_options, &option_index);
+                c = getopt_long(argc, argv, "i:o:c:f:p:k:n:w:r:v:h", g_long_options, &option_index);
                 if (c == -1) {
                         break;
                 }
@@ -867,6 +874,57 @@ int main (int argc, char *argv[])
                         case OPTION_OUTPUT:
                                 clew->options.output = optarg;
                                 break;
+                        case OPTION_CLIP: {
+                                int rc;
+
+                                double x;
+                                double y;
+                                const char *ptr;
+
+                                int32_t lon0;
+                                int32_t lat0;
+                                int32_t lonn;
+                                int32_t latn;
+                                uint64_t count;
+
+                                ptr = optarg;
+                                while (ptr && *ptr == ' ') {
+                                        ptr++;
+                                }
+                                while (ptr && *ptr) {
+                                        rc = sscanf(ptr, "%lf,%lf", &x, &y);
+                                        if (rc != 2) {
+                                                clew_errorf("malformed format");
+                                                goto bail;
+                                        }
+                                        clew_stack_push_int32(&clew->options.clip, x * 1e7);
+                                        clew_stack_push_int32(&clew->options.clip, y * 1e7);
+                                        ptr = strchr(ptr, ' ');
+                                        if (ptr == NULL) {
+                                                break;
+                                        }
+                                        while (ptr && *ptr == ' ') {
+                                                ptr++;
+                                        }
+                                }
+
+                                if (clew_stack_count(&clew->options.clip) < 4) {
+                                        clew_errorf("malformed format, must have at least 2 points");
+                                        goto bail;
+                                }
+
+                                lon0 = clew_stack_at_int32(&clew->options.clip, 0);
+                                lat0 = clew_stack_at_int32(&clew->options.clip, 1);
+
+                                count = clew_stack_count(&clew->options.clip);
+                                lonn = clew_stack_at_int32(&clew->options.clip, count - 2);
+                                latn = clew_stack_at_int32(&clew->options.clip, count - 1);
+
+                                if (lon0 != lonn || lat0 != latn) {
+                                        clew_stack_push_int32(&clew->options.clip, lon0);
+                                        clew_stack_push_int32(&clew->options.clip, lat0);
+                                }
+                        }       break;
                         case OPTION_FILTER:
                                 if (clew->options.filter != NULL) {
                                         clew_errorf("filter already exists");
@@ -878,6 +936,34 @@ int main (int argc, char *argv[])
                                         goto bail;
                                 }
                                 break;
+                        case OPTION_POINTS: {
+                                int rc;
+
+                                double x;
+                                double y;
+                                const char *ptr;
+
+                                ptr = optarg;
+                                while (ptr && *ptr == ' ') {
+                                        ptr++;
+                                }
+                                while (ptr && *ptr) {
+                                        rc = sscanf(ptr, "%lf,%lf", &x, &y);
+                                        if (rc != 2) {
+                                                clew_errorf("malformed format");
+                                                goto bail;
+                                        }
+                                        clew_stack_push_int32(&clew->options.points, x * 1e7);
+                                        clew_stack_push_int32(&clew->options.points, y * 1e7);
+                                        ptr = strchr(ptr, ' ');
+                                        if (ptr == NULL) {
+                                                break;
+                                        }
+                                        while (ptr && *ptr == ' ') {
+                                                ptr++;
+                                        }
+                                }
+                        }       break;
                         case OPTION_KEEP_TAGS:
                                 if (clew->options.keep_tags != NULL) {
                                         clew_errorf("keep_tags already exists");
@@ -999,6 +1085,36 @@ int main (int argc, char *argv[])
                 clew_errorf("expression is invalid, see help");
                 goto bail;
         }
+
+        clew_infof("clew");
+        clew_infof("  inputs             :");
+        for (i = 0, il = clew_stack_count(&clew->options.inputs); i < il; i++) {
+                clew_infof("    %s", *(char **) clew_stack_at(&clew->options.inputs, i));
+        }
+        clew_infof("  output             : %s", clew->options.output);
+        clew_infof("  points             : %ld", clew_stack_count(&clew->options.points));
+        for (i = 0, il = clew_stack_count(&clew->options.points); i < il; i += 2) {
+                clew_infof("    %12.7f,%12.7f", clew_stack_at_int32(&clew->options.points, i + 0) / 1e7, clew_stack_at_int32(&clew->options.points, i + 1) / 1e7);
+        }
+        clew_infof("  clip               : %ld", clew_stack_count(&clew->options.clip));
+        for (i = 0, il = clew_stack_count(&clew->options.clip); i < il; i += 2) {
+                clew_infof("    %12.7f,%12.7f", clew_stack_at_int32(&clew->options.clip, i + 0) / 1e7, clew_stack_at_int32(&clew->options.clip, i + 1) / 1e7);
+        }
+        clew_infof("  filter             : %s", clew_expression_orig(clew->options.filter));
+        clew_infof("  keep-tags          : %s", clew_expression_orig(clew->options.keep_tags));
+        clew_infof("  keep-tags-node     : %s", clew_expression_orig(clew->options.keep_tags_node));
+        clew_infof("  keep-tags-way      : %s", clew_expression_orig(clew->options.keep_tags_way));
+        clew_infof("  keep-tags-relation : %s", clew_expression_orig(clew->options.keep_tags_relation));
+        clew_infof("  drop-tags          : %s", clew_expression_orig(clew->options.drop_tags));
+        clew_infof("  drop-tags-node     : %s", clew_expression_orig(clew->options.drop_tags_node));
+        clew_infof("  drop-tags-way      : %s", clew_expression_orig(clew->options.drop_tags_way));
+        clew_infof("  drop-tags-relation : %s", clew_expression_orig(clew->options.drop_tags_relation));
+        clew_infof("  keep-nodes         : %d", clew->options.keep_nodes);
+        clew_infof("  keep-keep_ways     : %d", clew->options.keep_ways);
+        clew_infof("  keep-keep_relations: %d", clew->options.keep_relations);
+        clew_infof("  drop-nodes         : %d", clew->options.drop_nodes);
+        clew_infof("  drop-drop_ways     : %d", clew->options.drop_ways);
+        clew_infof("  drop-drop_relations: %d", clew->options.drop_relations);
 
         for (i = 0, il = clew_stack_count(&clew->options.inputs); i < il; i++) {
                 clew_infof("reading input: %s", *(char **) clew_stack_at(&clew->options.inputs, i));
