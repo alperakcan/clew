@@ -177,11 +177,15 @@ static inline void clew_stack_sort (const struct clew_stack *stack, int (*compar
 
 static inline void * clew_stack_search (const struct clew_stack *stack, const void *key, int (*compare) (const void *a, const void *b))
 {
+        int r;
         uint64_t i;
         if (stack->count <= 7) {
                 for (i = 0; i < stack->count; i++) {
-                        if (compare(key, stack->buffer + i * stack->size) == 0) {
+                        r = compare(key, stack->buffer + i * stack->size);
+                        if (r == 0) {
                                 return stack->buffer + i * stack->size;
+                        } else if (r < 0) {
+                                break;
                         }
                 }
                 return NULL;

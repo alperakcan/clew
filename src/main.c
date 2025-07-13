@@ -17,17 +17,17 @@
 #define OPTION_INPUT                    'i'
 #define OPTION_OUTPUT                   'o'
 
-#define OPTION_EXPRESSION               'e'
+#define OPTION_FILTER                   'f'
 
-#define OPTION_KEEP_TAG                 'k'
-#define OPTION_KEEP_TAG_NODE            0x201
-#define OPTION_KEEP_TAG_WAY             0x202
-#define OPTION_KEEP_TAG_RELATION        0x203
+#define OPTION_KEEP_TAGS                'k'
+#define OPTION_KEEP_TAGS_NODE           0x201
+#define OPTION_KEEP_TAGS_WAY            0x202
+#define OPTION_KEEP_TAGS_RELATION       0x203
 
-#define OPTION_DROP_TAG                 'd'
-#define OPTION_DROP_TAG_NODE            0x301
-#define OPTION_DROP_TAG_WAY             0x302
-#define OPTION_DROP_TAG_RELATION        0x303
+#define OPTION_DROP_TAGS                0x300
+#define OPTION_DROP_TAGS_NODE           0x301
+#define OPTION_DROP_TAGS_WAY            0x302
+#define OPTION_DROP_TAGS_RELATION       0x303
 
 #define OPTION_KEEP_NODES               'n'
 #define OPTION_KEEP_WAYS                'w'
@@ -41,15 +41,15 @@ static struct option g_long_options[] = {
         { "help",               no_argument,            0,      OPTION_HELP                     },
         { "input",              required_argument,      0,      OPTION_INPUT                    },
         { "output",             required_argument,      0,      OPTION_OUTPUT                   },
-        { "expression",         required_argument,      0,      OPTION_EXPRESSION               },
-        { "keep-tag",           required_argument,      0,      OPTION_KEEP_TAG                 },
-        { "keep-tag-node",      required_argument,      0,      OPTION_KEEP_TAG_NODE            },
-        { "keep-tag-way",       required_argument,      0,      OPTION_KEEP_TAG_WAY             },
-        { "keep-tag-relation",  required_argument,      0,      OPTION_KEEP_TAG_RELATION        },
-        { "drop-tag",           required_argument,      0,      OPTION_DROP_TAG                 },
-        { "drop-tag-node",      required_argument,      0,      OPTION_DROP_TAG_NODE            },
-        { "drop-tag-way",       required_argument,      0,      OPTION_DROP_TAG_WAY             },
-        { "drop-tag-relation",  required_argument,      0,      OPTION_DROP_TAG_RELATION        },
+        { "filter",             required_argument,      0,      OPTION_FILTER                   },
+        { "keep-tags",          required_argument,      0,      OPTION_KEEP_TAGS                },
+        { "keep-tags-node",     required_argument,      0,      OPTION_KEEP_TAGS_NODE           },
+        { "keep-tags-way",      required_argument,      0,      OPTION_KEEP_TAGS_WAY            },
+        { "keep-tags-relation", required_argument,      0,      OPTION_KEEP_TAGS_RELATION       },
+        { "drop-tags",          required_argument,      0,      OPTION_DROP_TAGS                },
+        { "drop-tags-node",     required_argument,      0,      OPTION_DROP_TAGS_NODE           },
+        { "drop-tags-way",      required_argument,      0,      OPTION_DROP_TAGS_WAY            },
+        { "drop-tags-relation", required_argument,      0,      OPTION_DROP_TAGS_RELATION       },
         { "keep-nodes",         required_argument,      0,      OPTION_KEEP_NODES               },
         { "keep-ways",          required_argument,      0,      OPTION_KEEP_WAYS                },
         { "keep-relations",     required_argument,      0,      OPTION_KEEP_RELATIONS           },
@@ -86,13 +86,15 @@ enum {
 struct clew_options {
         struct clew_stack inputs;
         const char *output;
-        struct clew_expression *expression;
-        struct clew_stack keep_tag_node;
-        struct clew_stack keep_tag_way;
-        struct clew_stack keep_tag_relation;
-        struct clew_stack drop_tag_node;
-        struct clew_stack drop_tag_way;
-        struct clew_stack drop_tag_relation;
+        struct clew_expression *filter;
+        struct clew_expression *keep_tags;
+        struct clew_expression *keep_tags_node;
+        struct clew_expression *keep_tags_way;
+        struct clew_expression *keep_tags_relation;
+        struct clew_expression *drop_tags;
+        struct clew_expression *drop_tags_node;
+        struct clew_expression *drop_tags_way;
+        struct clew_expression *drop_tags_relation;
         int keep_nodes;
         int keep_ways;
         int keep_relations;
@@ -129,14 +131,14 @@ static void print_help (const char *pname)
 	fprintf(stdout, "\n");
 	fprintf(stdout, "  --input              / -i : input path\n");
 	fprintf(stdout, "  --output             / -o: output path\n");
-	fprintf(stdout, "  --expression         / -e: filter expression\n");
+	fprintf(stdout, "  --expression         / -e: filter expression (default: \"\")\n");
 	fprintf(stdout, "  --keep-nodes         / -n: filter nodes (default: 0)\n");
 	fprintf(stdout, "  --keep-ways          / -w: filter ways (default: 0)\n");
 	fprintf(stdout, "  --keep-relations     / -r: filter relations (default: 0)\n");
-	fprintf(stdout, "  --keep-tag           / -k: keep tag (default: 0)\n");
-	fprintf(stdout, "  --keep-tag-node          : keep node tag (default: 0)\n");
-	fprintf(stdout, "  --keep-tag-way           : keep way tag (default: 0)\n");
-	fprintf(stdout, "  --keep-tag-relation      : keep relation tag (default: 0)\n");
+	fprintf(stdout, "  --keep-tags          / -k: keep tag (default: \"\")\n");
+	fprintf(stdout, "  --keep-tags-node         : keep node tag (default: \"\")\n");
+	fprintf(stdout, "  --keep-tags-way          : keep way tag (default: \"\")\n");
+	fprintf(stdout, "  --keep-tags-relation     : keep relation tag (default: \"\")\n");
 	fprintf(stdout, "\n");
 	fprintf(stdout, "example:\n");
 	fprintf(stdout, "\n");
@@ -182,6 +184,12 @@ static void print_help (const char *pname)
         fprintf(stdout, "  highway_corridor     : For a hallway inside of a building.\n");
         fprintf(stdout, "  highway_path         : A non-specific path.\n");
         fprintf(stdout, "  highway_via_ferrata  : A via ferrata is a route equipped with fixed cables, stemples, ladders, and bridges in order to increase ease and security for climbers.\n");
+}
+
+static int tag_expression_match_has (void *context, uint32_t tag)
+{
+        uint32_t t = *(uint32_t *) context;
+        return t == tag;
 }
 
 static int tags_expression_match_has (void *context, uint32_t tag)
@@ -289,7 +297,7 @@ static int input_callback_node_end (struct clew_input *input, void *context)
         clew_stack_pop(&clew->read_state);
 
         clew_stack_sort_uint32(&clew->read_tags);
-        match = clew_expression_match(clew->options.expression, &clew->read_tags, NULL, NULL, NULL, tags_expression_match_has);
+        match = clew_expression_match(clew->options.filter, &clew->read_tags, NULL, NULL, NULL, tags_expression_match_has);
         if (match == 1) {
                 uint64_t i;
                 uint64_t il;
@@ -341,7 +349,7 @@ static int input_callback_way_end (struct clew_input *input, void *context)
         clew_stack_pop(&clew->read_state);
 
         clew_stack_sort_uint32(&clew->read_tags);
-        match = clew_expression_match(clew->options.expression, &clew->read_tags, NULL, NULL, NULL, tags_expression_match_has);
+        match = clew_expression_match(clew->options.filter, &clew->read_tags, NULL, NULL, NULL, tags_expression_match_has);
         if (match == 1) {
                 uint64_t i;
                 uint64_t il;
@@ -393,7 +401,7 @@ static int input_callback_relation_end (struct clew_input *input, void *context)
         clew_stack_pop(&clew->read_state);
 
         clew_stack_sort_uint32(&clew->read_tags);
-        match = clew_expression_match(clew->options.expression, &clew->read_tags, NULL, NULL, NULL, tags_expression_match_has);
+        match = clew_expression_match(clew->options.filter, &clew->read_tags, NULL, NULL, NULL, tags_expression_match_has);
         if (match == 1) {
                 uint64_t i;
                 uint64_t il;
@@ -433,11 +441,11 @@ bail:   return -1;
 static int input_callback_tag_end (struct clew_input *input, void *context)
 {
         int rc;
+        int keep;
+        int drop;
         uint32_t tag;
-        uint64_t keep;
-        uint64_t drop;
-        struct clew_stack *keep_tags;
-        struct clew_stack *drop_tags;
+        struct clew_expression *keep_tags;
+        struct clew_expression *drop_tags;
 
         struct clew *clew = context;
 
@@ -468,38 +476,40 @@ static int input_callback_tag_end (struct clew_input *input, void *context)
 
         switch (clew_stack_peek_uint32(&clew->read_state)) {
                 case CLEW_READ_STATE_NODE:
-                        keep_tags = &clew->options.keep_tag_node;
-                        drop_tags = &clew->options.drop_tag_node;
+                        keep_tags = clew->options.keep_tags_node;
+                        drop_tags = clew->options.drop_tags_node;
                         break;
                 case CLEW_READ_STATE_WAY:
-                        keep_tags = &clew->options.keep_tag_way;
-                        drop_tags = &clew->options.drop_tag_way;
+                        keep_tags = clew->options.keep_tags_way;
+                        drop_tags = clew->options.drop_tags_way;
                         break;
                 case CLEW_READ_STATE_RELATION:
-                        keep_tags = &clew->options.keep_tag_relation;
-                        drop_tags = &clew->options.drop_tag_relation;
+                        keep_tags = clew->options.keep_tags_relation;
+                        drop_tags = clew->options.drop_tags_relation;
                         break;
                 default:
                         clew_errorf("read state is invalid, %d != %d || %d || %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_NODE, CLEW_READ_STATE_WAY, CLEW_READ_STATE_RELATION);
                         goto bail;
         }
-        if (clew_stack_count(keep_tags) > 0) {
-                keep = clew_stack_search_uint32(keep_tags, tag);
-                if (keep == UINT64_MAX) {
-                        goto out;
-                }
+
+        keep = 0;
+        drop = 0;
+        if (((clew->options.keep_tags == NULL) && (keep_tags == NULL)) ||
+            (clew->options.keep_tags && clew_expression_match(clew->options.keep_tags, &tag, NULL, NULL, NULL, tag_expression_match_has) == 1) ||
+            (keep_tags && clew_expression_match(keep_tags, &tag, NULL, NULL, NULL, tag_expression_match_has) == 1)) {
+                keep = 1;
         }
-        if (clew_stack_count(drop_tags) > 0) {
-                drop = clew_stack_search_uint32(keep_tags, tag);
-                if (drop != UINT64_MAX) {
-                        goto out;
-                }
+        if ((clew->options.drop_tags && clew_expression_match(clew->options.drop_tags, &tag, NULL, NULL, NULL, tag_expression_match_has) == 1) ||
+            (drop_tags && clew_expression_match(drop_tags, &tag, NULL, NULL, NULL, tag_expression_match_has) == 1)) {
+                drop = 1;
         }
 
-        rc = clew_stack_push_uint32(&clew->read_tags, tag);
-        if (rc != 0) {
-                clew_errorf("can not add tag");
-                goto bail;
+        if (keep == 1 && drop == 0) {
+                rc = clew_stack_push_uint32(&clew->read_tags, tag);
+                if (rc != 0) {
+                        clew_errorf("can not add tag");
+                        goto bail;
+                }
         }
 
 out:    clew->read_tag_k[0] = '\0';
@@ -791,7 +801,6 @@ int main (int argc, char *argv[])
 
         int i;
         int il;
-        uint32_t tag;
 
         struct clew_input *input;
         struct clew_input_init_options input_init_options;
@@ -811,21 +820,23 @@ int main (int argc, char *argv[])
         }
         memset(clew, 0, sizeof(struct clew));
 
-        clew->options.inputs            = clew_stack_init(sizeof(const char *));
-        clew->options.output            = NULL;
-        clew->options.expression        = NULL;
-        clew->options.keep_tag_node     = clew_stack_init(sizeof(uint32_t));
-        clew->options.keep_tag_way      = clew_stack_init(sizeof(uint32_t));
-        clew->options.keep_tag_relation = clew_stack_init(sizeof(uint32_t));
-        clew->options.drop_tag_node     = clew_stack_init(sizeof(uint32_t));
-        clew->options.drop_tag_way      = clew_stack_init(sizeof(uint32_t));
-        clew->options.drop_tag_relation = clew_stack_init(sizeof(uint32_t));
-        clew->options.keep_nodes        = -1;
-        clew->options.keep_ways         = -1;
-        clew->options.keep_relations    = -1;
-        clew->options.drop_nodes        = -1;
-        clew->options.drop_ways         = -1;
-        clew->options.drop_relations    = -1;
+        clew->options.inputs                    = clew_stack_init(sizeof(const char *));
+        clew->options.output                    = NULL;
+        clew->options.filter                    = NULL;
+        clew->options.keep_tags                 = NULL;
+        clew->options.keep_tags_node            = NULL;
+        clew->options.keep_tags_way             = NULL;
+        clew->options.keep_tags_relation        = NULL;
+        clew->options.drop_tags                 = NULL;
+        clew->options.drop_tags_node            = NULL;
+        clew->options.drop_tags_way             = NULL;
+        clew->options.drop_tags_relation        = NULL;
+        clew->options.keep_nodes                = -1;
+        clew->options.keep_ways                 = -1;
+        clew->options.keep_relations            = -1;
+        clew->options.drop_nodes                = -1;
+        clew->options.drop_ways                 = -1;
+        clew->options.drop_relations            = -1;
 
         clew->state             = CLEW_STATE_INITIAL;
 
@@ -838,7 +849,7 @@ int main (int argc, char *argv[])
         clew->relation_ids      = clew_stack_init(sizeof(uint64_t));
 
         while (1) {
-                c = getopt_long(argc, argv, "i:o:e:k:d:n:w:r:v:h", g_long_options, &option_index);
+                c = getopt_long(argc, argv, "i:o:f:k:n:w:r:v:h", g_long_options, &option_index);
                 if (c == -1) {
                         break;
                 }
@@ -856,110 +867,102 @@ int main (int argc, char *argv[])
                         case OPTION_OUTPUT:
                                 clew->options.output = optarg;
                                 break;
-                        case OPTION_EXPRESSION:
-                                clew->options.expression = clew_expression_create(optarg);
-                                if (clew->options.expression == NULL) {
+                        case OPTION_FILTER:
+                                if (clew->options.filter != NULL) {
+                                        clew_errorf("filter already exists");
+                                        goto bail;
+                                }
+                                clew->options.filter = clew_expression_create(optarg);
+                                if (clew->options.filter == NULL) {
                                         clew_errorf("can not create expression: %s", optarg);
                                         goto bail;
                                 }
                                 break;
-                        case OPTION_KEEP_TAG:
-                                tag = clew_tag_value(optarg);
-                                if (tag == clew_tag_unknown) {
-                                        clew_errorf("tag: %s is invalid", optarg);
+                        case OPTION_KEEP_TAGS:
+                                if (clew->options.keep_tags != NULL) {
+                                        clew_errorf("keep_tags already exists");
                                         goto bail;
                                 }
-                                rc  = clew_stack_push_uint32(&clew->options.keep_tag_node, tag);
-                                rc |= clew_stack_push_uint32(&clew->options.keep_tag_way, tag);
-                                rc |= clew_stack_push_uint32(&clew->options.keep_tag_relation, tag);
-                                if (rc < 0) {
-                                        clew_errorf("can not add tag to stack");
+                                clew->options.keep_tags = clew_expression_create(optarg);
+                                if (clew->options.keep_tags == NULL) {
+                                        clew_errorf("can not create expression: %s", optarg);
                                         goto bail;
                                 }
                                 break;
-                        case OPTION_KEEP_TAG_NODE:
-                                tag = clew_tag_value(optarg);
-                                if (tag == clew_tag_unknown) {
-                                        clew_errorf("tag: %s is invalid", optarg);
+                        case OPTION_KEEP_TAGS_NODE:
+                                if (clew->options.keep_tags_node != NULL) {
+                                        clew_errorf("keep_tags_node already exists");
                                         goto bail;
                                 }
-                                rc = clew_stack_push_uint32(&clew->options.keep_tag_node, tag);
-                                if (rc < 0) {
-                                        clew_errorf("can not add tag to stack");
-                                        goto bail;
-                                }
-                                break;
-                        case OPTION_KEEP_TAG_WAY:
-                                tag = clew_tag_value(optarg);
-                                if (tag == clew_tag_unknown) {
-                                        clew_errorf("tag: %s is invalid", optarg);
-                                        goto bail;
-                                }
-                                rc = clew_stack_push_uint32(&clew->options.keep_tag_way, tag);
-                                if (rc < 0) {
-                                        clew_errorf("can not add tag to stack");
+                                clew->options.keep_tags_node = clew_expression_create(optarg);
+                                if (clew->options.keep_tags_node == NULL) {
+                                        clew_errorf("can not create expression: %s", optarg);
                                         goto bail;
                                 }
                                 break;
-                        case OPTION_KEEP_TAG_RELATION:
-                                tag = clew_tag_value(optarg);
-                                if (tag == clew_tag_unknown) {
-                                        clew_errorf("tag: %s is invalid", optarg);
+                        case OPTION_KEEP_TAGS_WAY:
+                                if (clew->options.keep_tags_way != NULL) {
+                                        clew_errorf("keep_tags_way already exists");
                                         goto bail;
                                 }
-                                rc = clew_stack_push_uint32(&clew->options.keep_tag_relation, tag);
-                                if (rc < 0) {
-                                        clew_errorf("can not add tag to stack");
-                                        goto bail;
-                                }
-                                break;
-                        case OPTION_DROP_TAG:
-                                tag = clew_tag_value(optarg);
-                                if (tag == clew_tag_unknown) {
-                                        clew_errorf("tag: %s is invalid", optarg);
-                                        goto bail;
-                                }
-                                rc  = clew_stack_push_uint32(&clew->options.drop_tag_node, tag);
-                                rc |= clew_stack_push_uint32(&clew->options.drop_tag_way, tag);
-                                rc |= clew_stack_push_uint32(&clew->options.drop_tag_relation, tag);
-                                if (rc < 0) {
-                                        clew_errorf("can not add tag to stack");
+                                clew->options.keep_tags_way = clew_expression_create(optarg);
+                                if (clew->options.keep_tags_way == NULL) {
+                                        clew_errorf("can not create expression: %s", optarg);
                                         goto bail;
                                 }
                                 break;
-                        case OPTION_DROP_TAG_NODE:
-                                tag = clew_tag_value(optarg);
-                                if (tag == clew_tag_unknown) {
-                                        clew_errorf("tag: %s is invalid", optarg);
+                        case OPTION_KEEP_TAGS_RELATION:
+                                if (clew->options.keep_tags_relation != NULL) {
+                                        clew_errorf("keep_tags_relation already exists");
                                         goto bail;
                                 }
-                                rc = clew_stack_push_uint32(&clew->options.drop_tag_node, tag);
-                                if (rc < 0) {
-                                        clew_errorf("can not add tag to stack");
-                                        goto bail;
-                                }
-                                break;
-                        case OPTION_DROP_TAG_WAY:
-                                tag = clew_tag_value(optarg);
-                                if (tag == clew_tag_unknown) {
-                                        clew_errorf("tag: %s is invalid", optarg);
-                                        goto bail;
-                                }
-                                rc = clew_stack_push_uint32(&clew->options.drop_tag_way, tag);
-                                if (rc < 0) {
-                                        clew_errorf("can not add tag to stack");
+                                clew->options.keep_tags_relation = clew_expression_create(optarg);
+                                if (clew->options.keep_tags_relation == NULL) {
+                                        clew_errorf("can not create expression: %s", optarg);
                                         goto bail;
                                 }
                                 break;
-                        case OPTION_DROP_TAG_RELATION:
-                                tag = clew_tag_value(optarg);
-                                if (tag == clew_tag_unknown) {
-                                        clew_errorf("tag: %s is invalid", optarg);
+                        case OPTION_DROP_TAGS:
+                                if (clew->options.drop_tags != NULL) {
+                                        clew_errorf("drop_tags already exists");
                                         goto bail;
                                 }
-                                rc = clew_stack_push_uint32(&clew->options.drop_tag_relation, tag);
-                                if (rc < 0) {
-                                        clew_errorf("can not add tag to stack");
+                                clew->options.drop_tags = clew_expression_create(optarg);
+                                if (clew->options.drop_tags == NULL) {
+                                        clew_errorf("can not create expression: %s", optarg);
+                                        goto bail;
+                                }
+                                break;
+                        case OPTION_DROP_TAGS_NODE:
+                                if (clew->options.drop_tags_node != NULL) {
+                                        clew_errorf("drop_tags_node already exists");
+                                        goto bail;
+                                }
+                                clew->options.drop_tags_node = clew_expression_create(optarg);
+                                if (clew->options.drop_tags_node == NULL) {
+                                        clew_errorf("can not create expression: %s", optarg);
+                                        goto bail;
+                                }
+                                break;
+                        case OPTION_DROP_TAGS_WAY:
+                                if (clew->options.drop_tags_way != NULL) {
+                                        clew_errorf("drop_tags_way already exists");
+                                        goto bail;
+                                }
+                                clew->options.drop_tags_way = clew_expression_create(optarg);
+                                if (clew->options.drop_tags_way == NULL) {
+                                        clew_errorf("can not create expression: %s", optarg);
+                                        goto bail;
+                                }
+                                break;
+                        case OPTION_DROP_TAGS_RELATION:
+                                if (clew->options.drop_tags_relation != NULL) {
+                                        clew_errorf("drop_tags_relation already exists");
+                                        goto bail;
+                                }
+                                clew->options.drop_tags_relation = clew_expression_create(optarg);
+                                if (clew->options.drop_tags_relation == NULL) {
+                                        clew_errorf("can not create expression: %s", optarg);
                                         goto bail;
                                 }
                                 break;
@@ -992,17 +995,10 @@ int main (int argc, char *argv[])
                 clew_errorf("output is invalid, see help");
                 goto bail;
         }
-        if (clew->options.expression == NULL) {
+        if (clew->options.filter == NULL) {
                 clew_errorf("expression is invalid, see help");
                 goto bail;
         }
-
-        clew_stack_sort_uint32(&clew->options.keep_tag_node);
-        clew_stack_sort_uint32(&clew->options.keep_tag_way);
-        clew_stack_sort_uint32(&clew->options.keep_tag_relation);
-        clew_stack_sort_uint32(&clew->options.drop_tag_node);
-        clew_stack_sort_uint32(&clew->options.drop_tag_way);
-        clew_stack_sort_uint32(&clew->options.drop_tag_relation);
 
         for (i = 0, il = clew_stack_count(&clew->options.inputs); i < il; i++) {
                 clew_infof("reading input: %s", *(char **) clew_stack_at(&clew->options.inputs, i));
@@ -1067,18 +1063,20 @@ int main (int argc, char *argv[])
 out:
         if (clew != NULL) {
                 clew_stack_uninit(&clew->options.inputs);
-                clew_stack_uninit(&clew->options.keep_tag_node);
-                clew_stack_uninit(&clew->options.keep_tag_way);
-                clew_stack_uninit(&clew->options.keep_tag_relation);
-                clew_stack_uninit(&clew->options.drop_tag_node);
-                clew_stack_uninit(&clew->options.drop_tag_way);
-                clew_stack_uninit(&clew->options.drop_tag_relation);
+                clew_expression_destroy(clew->options.keep_tags);
+                clew_expression_destroy(clew->options.keep_tags_node);
+                clew_expression_destroy(clew->options.keep_tags_way);
+                clew_expression_destroy(clew->options.keep_tags_relation);
+                clew_expression_destroy(clew->options.drop_tags);
+                clew_expression_destroy(clew->options.drop_tags_node);
+                clew_expression_destroy(clew->options.drop_tags_way);
+                clew_expression_destroy(clew->options.drop_tags_relation);
                 clew_stack_uninit(&clew->read_state);
                 clew_stack_uninit(&clew->node_ids);
                 clew_stack_uninit(&clew->way_ids);
                 clew_stack_uninit(&clew->relation_ids);
                 clew_stack_uninit(&clew->read_tags);
-                clew_expression_destroy(clew->options.expression);
+                clew_expression_destroy(clew->options.filter);
                 free(clew);
         }
 
