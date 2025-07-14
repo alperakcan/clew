@@ -194,10 +194,17 @@ static inline void clew_stack_del (struct clew_stack *stack, uint64_t at)
         stack->count -= 1;
 }
 
-static inline void * clew_stack_at (const struct clew_stack *stack, uint64_t at)
+static inline void * clew_stack_at (const struct clew_stack *stack, int64_t at)
 {
-        if (unlikely(at >= stack->count)) {
-                return NULL;
+        if (likely(at >= 0)) {
+                if (unlikely(at >= (int64_t) stack->count)) {
+                        return NULL;
+                }
+        } else {
+                if (unlikely(-at >= (int64_t) stack->count)) {
+                        return NULL;
+                }
+                at = stack->count + at;
         }
         return stack->buffer + at * stack->size;
 }

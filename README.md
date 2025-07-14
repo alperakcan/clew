@@ -5,6 +5,24 @@ Clew is a semi-optimal route planning tool for adventure motor touring — (aka:
 
 ```
 clew usage:
+  --input              / -i : input path
+  --output             / -o: output path
+  --clip-path          / -c: clip path, ex: lon1,lat1 lon2,lat2 ... (default: "")
+  --clip-bound             : clip bound, ex: minlon,minlat,maxlon,maxlat (default: "")
+  --clip-offset            : clip offset in meters (default: 0)
+  --filter             / -f: filter expression (default: "")
+  --points             / -p: points to visit, ex: lon1,lat1 lon2,lat2 ... (default: "")
+  --keep-nodes         / -n: filter nodes (default: 0)
+  --keep-ways          / -w: filter ways (default: 0)
+  --keep-relations     / -r: filter relations (default: 0)
+  --keep-tags          / -k: keep tag (default: "")
+  --keep-tags-node         : keep node tag (default: "")
+  --keep-tags-way          : keep way tag (default: "")
+  --keep-tags-relation     : keep relation tag (default: "")
+```
+
+```
+clew usage:
 
   --input              / -i : input path
   --output             / -o: output path
