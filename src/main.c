@@ -306,7 +306,12 @@ static int input_callback_node_start (struct clew_input *input, void *context)
 
         clew_stack_reset(&clew->read_tags);
 
+        if (clew->options.keep_nodes == 0) {
+                goto skip;
+        }
+
         return 0;
+skip:   return 1;
 bail:   return -1;
 }
 

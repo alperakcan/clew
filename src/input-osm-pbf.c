@@ -330,6 +330,8 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         clew_errorf("input callback_node_start failed");
                                                         osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                         goto bail;
+                                                } else if (rc == 1) {
+                                                        goto skip_node;
                                                 }
                                         }
                                         if (input->callback_id) {
@@ -338,6 +340,8 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         clew_errorf("input callback_id failed");
                                                         osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                         goto bail;
+                                                } else if (rc == 1) {
+                                                        goto skip_node;
                                                 }
                                         }
                                         if (input->callback_lon) {
@@ -396,6 +400,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                 }
                                                 k++;
                                         }
+skip_node:
                                         if (input->callback_node_end) {
                                                 rc = input->callback_node_end(&input->backend, input->callback_context);
                                                 if (rc < 0) {
@@ -412,6 +417,8 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         clew_errorf("input callback_way_start failed");
                                                         osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                         goto bail;
+                                                } else if (rc == 1) {
+                                                        goto skip_way;
                                                 }
                                         }
                                         if (input->callback_id) {
@@ -420,6 +427,8 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         clew_errorf("input callback_id failed");
                                                         osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                         goto bail;
+                                                } else if (rc == 1) {
+                                                        goto skip_way;
                                                 }
                                         }
                                         for (k = 0, ref = 0; k < primitive_group->ways[j]->n_refs; k++) {
@@ -485,6 +494,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         }
                                                 }
                                         }
+skip_way:
                                         if (input->callback_way_end) {
                                                 rc = input->callback_way_end(&input->backend, input->callback_context);
                                                 if (rc < 0) {
@@ -501,6 +511,8 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         clew_errorf("input callback_relation_start failed");
                                                         osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                         goto bail;
+                                                } else if (rc == 1) {
+                                                        goto skip_relation;
                                                 }
                                         }
                                         if (input->callback_id) {
@@ -509,6 +521,8 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         clew_errorf("input callback_id failed");
                                                         osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                         goto bail;
+                                                } else if (rc == 1) {
+                                                        goto skip_relation;
                                                 }
                                         }
                                         for (k = 0, ref = 0; k < primitive_group->relations[j]->n_roles_sid; k++) {
@@ -591,6 +605,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                         }
                                                 }
                                         }
+skip_relation:
                                         if (input->callback_relation_end) {
                                                 rc = input->callback_relation_end(&input->backend, input->callback_context);
                                                 if (rc < 0) {

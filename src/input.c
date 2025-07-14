@@ -80,7 +80,7 @@ static int clew_input_backend_callback_bounds_start (struct clew_input_backend *
 
         if (input->callback_bounds_start != NULL) {
                 rc = input->callback_bounds_start(input, input->callback_context);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_bounds_start failed");
                         goto bail;
                 }
@@ -106,7 +106,7 @@ static int clew_input_backend_callback_bounds_end (struct clew_input_backend *ba
 
         if (input->callback_bounds_end != NULL) {
                 rc = input->callback_bounds_end(input, input->callback_context);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_bounds_end failed");
                         goto bail;
                 }
@@ -130,15 +130,16 @@ static int clew_input_backend_callback_node_start (struct clew_input_backend *ba
                 goto bail;
         }
 
+        rc = 0;
         if (input->callback_node_start != NULL) {
                 rc = input->callback_node_start(input, input->callback_context);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_node_start failed");
                         goto bail;
                 }
         }
 
-        return 0;
+        return rc;
 bail:   return -1;
 }
 
@@ -158,7 +159,7 @@ static int clew_input_backend_callback_node_end (struct clew_input_backend *back
 
         if (input->callback_node_end != NULL) {
                 rc = input->callback_node_end(input, input->callback_context);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_node_end failed");
                         goto bail;
                 }
@@ -182,15 +183,16 @@ static int clew_input_backend_callback_way_start (struct clew_input_backend *bac
                 goto bail;
         }
 
+        rc = 0;
         if (input->callback_way_start != NULL) {
                 rc = input->callback_way_start(input, input->callback_context);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_way_start failed");
                         goto bail;
                 }
         }
 
-        return 0;
+        return rc;
 bail:   return -1;
 }
 
@@ -210,7 +212,7 @@ static int clew_input_backend_callback_way_end (struct clew_input_backend *backe
 
         if (input->callback_way_end != NULL) {
                 rc = input->callback_way_end(input, input->callback_context);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_way_end failed");
                         goto bail;
                 }
@@ -234,15 +236,16 @@ static int clew_input_backend_callback_relation_start (struct clew_input_backend
                 goto bail;
         }
 
+        rc = 0;
         if (input->callback_relation_start != NULL) {
                 rc = input->callback_relation_start(input, input->callback_context);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_relation_start failed");
                         goto bail;
                 }
         }
 
-        return 0;
+        return rc;
 bail:   return -1;
 }
 
@@ -262,7 +265,7 @@ static int clew_input_backend_callback_relation_end (struct clew_input_backend *
 
         if (input->callback_relation_end != NULL) {
                 rc = input->callback_relation_end(input, input->callback_context);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_relation_end failed");
                         goto bail;
                 }
@@ -288,7 +291,7 @@ static int clew_input_backend_callback_tag_start (struct clew_input_backend *bac
 
         if (input->callback_tag_start != NULL) {
                 rc = input->callback_tag_start(input, input->callback_context);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_tag_start failed");
                         goto bail;
                 }
@@ -314,7 +317,7 @@ static int clew_input_backend_callback_tag_end (struct clew_input_backend *backe
 
         if (input->callback_tag_end != NULL) {
                 rc = input->callback_tag_end(input, input->callback_context);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_tag_end failed");
                         goto bail;
                 }
@@ -340,7 +343,7 @@ static int clew_input_backend_callback_nd_start (struct clew_input_backend *back
 
         if (input->callback_nd_start != NULL) {
                 rc = input->callback_nd_start(input, input->callback_context);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_nd_start failed");
                         goto bail;
                 }
@@ -366,7 +369,7 @@ static int clew_input_backend_callback_nd_end (struct clew_input_backend *backen
 
         if (input->callback_nd_end != NULL) {
                 rc = input->callback_nd_end(input, input->callback_context);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_nd_end failed");
                         goto bail;
                 }
@@ -392,7 +395,7 @@ static int clew_input_backend_callback_member_start (struct clew_input_backend *
 
         if (input->callback_member_start != NULL) {
                 rc = input->callback_member_start(input, input->callback_context);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_member_start failed");
                         goto bail;
                 }
@@ -418,7 +421,7 @@ static int clew_input_backend_callback_member_end (struct clew_input_backend *ba
 
         if (input->callback_member_end != NULL) {
                 rc = input->callback_member_end(input, input->callback_context);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_member_end failed");
                         goto bail;
                 }
@@ -444,7 +447,7 @@ static int clew_input_backend_callback_minlon (struct clew_input_backend *backen
 
         if (input->callback_minlon != NULL) {
                 rc = input->callback_minlon(input, input->callback_context, minlon);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_minlon failed");
                         goto bail;
                 }
@@ -470,7 +473,7 @@ static int clew_input_backend_callback_minlat (struct clew_input_backend *backen
 
         if (input->callback_minlat != NULL) {
                 rc = input->callback_minlat(input, input->callback_context, minlat);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_minlat failed");
                         goto bail;
                 }
@@ -496,7 +499,7 @@ static int clew_input_backend_callback_maxlon (struct clew_input_backend *backen
 
         if (input->callback_maxlon != NULL) {
                 rc = input->callback_maxlon(input, input->callback_context, maxlon);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_maxlon failed");
                         goto bail;
                 }
@@ -522,7 +525,7 @@ static int clew_input_backend_callback_maxlat (struct clew_input_backend *backen
 
         if (input->callback_maxlat != NULL) {
                 rc = input->callback_maxlat(input, input->callback_context, maxlat);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_maxlat failed");
                         goto bail;
                 }
@@ -546,15 +549,16 @@ static int clew_input_backend_callback_id (struct clew_input_backend *backend, v
                 goto bail;
         }
 
+        rc = 0;
         if (input->callback_id != NULL) {
                 rc = input->callback_id(input, input->callback_context, id);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_id failed");
                         goto bail;
                 }
         }
 
-        return 0;
+        return rc;
 bail:   return -1;
 }
 
@@ -574,7 +578,7 @@ static int clew_input_backend_callback_lon (struct clew_input_backend *backend, 
 
         if (input->callback_lon != NULL) {
                 rc = input->callback_lon(input, input->callback_context, lon);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_lon failed");
                         goto bail;
                 }
@@ -600,7 +604,7 @@ static int clew_input_backend_callback_lat (struct clew_input_backend *backend, 
 
         if (input->callback_lat != NULL) {
                 rc = input->callback_lat(input, input->callback_context, lat);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_lat failed");
                         goto bail;
                 }
@@ -626,7 +630,7 @@ static int clew_input_backend_callback_ref (struct clew_input_backend *backend, 
 
         if (input->callback_ref != NULL) {
                 rc = input->callback_ref(input, input->callback_context, ref);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_ref failed");
                         goto bail;
                 }
@@ -652,7 +656,7 @@ static int clew_input_backend_callback_type (struct clew_input_backend *backend,
 
         if (input->callback_type != NULL) {
                 rc = input->callback_type(input, input->callback_context, type);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_type failed");
                         goto bail;
                 }
@@ -678,7 +682,7 @@ static int clew_input_backend_callback_role (struct clew_input_backend *backend,
 
         if (input->callback_role != NULL) {
                 rc = input->callback_role(input, input->callback_context, role);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_role failed");
                         goto bail;
                 }
@@ -704,7 +708,7 @@ static int clew_input_backend_callback_k (struct clew_input_backend *backend, vo
 
         if (input->callback_k != NULL) {
                 rc = input->callback_k(input, input->callback_context, k);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_k failed");
                         goto bail;
                 }
@@ -730,7 +734,7 @@ static int clew_input_backend_callback_v (struct clew_input_backend *backend, vo
 
         if (input->callback_v != NULL) {
                 rc = input->callback_v(input, input->callback_context, v);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_v failed");
                         goto bail;
                 }
@@ -758,7 +762,7 @@ static int clew_input_backend_callback_error (struct clew_input_backend *backend
 
         if (input->callback_error != NULL) {
                 rc = input->callback_error(input, input->callback_context, reason);
-                if (rc != 0) {
+                if (rc < 0) {
                         clew_errorf("input callback_error failed");
                         goto bail;
                 }
