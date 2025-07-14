@@ -456,6 +456,7 @@ enum {
         clew_tag_highway_turning_loop,
         clew_tag_highway_unclassified,
         clew_tag_highway_via_ferrata,
+        clew_tag_highway_unknown,
 
         clew_tag_historic_archaeological_site,
         clew_tag_historic_battlefield,
