@@ -59,11 +59,11 @@ dist.bin-y     += clew
 include ${CLEW_LIBMAKEFILE_PATH}/Makefile.lib
 
 input-osm-pbf-fileformat.pb-c.c input-osm-pbf-fileformat.pb-c.h: input-osm-pbf-fileformat.proto
-	${Q}echo "  GEN        $*"
+	${Q}echo "  GEN        `pwd`/$*"
 	${Q}protoc-c input-osm-pbf-fileformat.proto --c_out=.
 
 input-osm-pbf-osmformat.pb-c.c input-osm-pbf-osmformat.pb-c.h: input-osm-pbf-osmformat.proto
-	${Q}echo "  GEN        $*"
+	${Q}echo "  GEN        `pwd`/$*"
 	${Q}protoc-c input-osm-pbf-osmformat.proto --c_out=.
 
 tag.c: tag*.h Makefile tag.sh

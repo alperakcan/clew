@@ -517,23 +517,6 @@ static int input_callback_tag_end (struct clew_input *input, void *context)
         }
         clew_stack_pop(&clew->read_state);
 
-        if (strlen(clew->read_tag_k) <= 0) {
-                clew_debugf("k is invalid: %s = %s", clew->read_tag_k, clew->read_tag_v);
-                goto out;
-        }
-        if (strlen(clew->read_tag_v) <= 0) {
-                clew_debugf("v is invalid: %s = %s", clew->read_tag_k, clew->read_tag_v);
-                goto out;
-        }
-
-        parse_tag_fix(clew->read_tag_k, clew->read_tag_v);
-        snprintf(clew->read_tag_s, sizeof(clew->read_tag_s), "%s_%s", clew->read_tag_k, clew->read_tag_v);
-        tag = clew_tag_value(clew->read_tag_s);
-        if (tag == clew_tag_unknown) {
-                //clew_todof("tag is invalid, '%s' = '%s'", clew->read_tag_k, clew->read_tag_v);
-                goto out;
-        }
-
         switch (clew_stack_peek_uint32(&clew->read_state)) {
                 case CLEW_READ_STATE_NODE:
                         keep_tags = clew->options.keep_tags_node;
@@ -550,6 +533,32 @@ static int input_callback_tag_end (struct clew_input *input, void *context)
                 default:
                         clew_errorf("read state is invalid, %d != %d || %d || %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_NODE, CLEW_READ_STATE_WAY, CLEW_READ_STATE_RELATION);
                         goto bail;
+        }
+        keep = 0;
+        if (((clew->options.keep_tags == NULL) && (keep_tags == NULL)) ||
+            (clew->options.keep_tags && clew_expression_count(clew->options.keep_tags) > 0) ||
+            (keep_tags && clew_expression_count(keep_tags) > 0)) {
+                keep = 1;
+        }
+        if (keep == 0) {
+                goto out;
+        }
+
+        if (strlen(clew->read_tag_k) <= 0) {
+                clew_debugf("k is invalid: %s = %s", clew->read_tag_k, clew->read_tag_v);
+                goto out;
+        }
+        if (strlen(clew->read_tag_v) <= 0) {
+                clew_debugf("v is invalid: %s = %s", clew->read_tag_k, clew->read_tag_v);
+                goto out;
+        }
+
+        parse_tag_fix(clew->read_tag_k, clew->read_tag_v);
+        snprintf(clew->read_tag_s, sizeof(clew->read_tag_s), "%s_%s", clew->read_tag_k, clew->read_tag_v);
+        tag = clew_tag_value(clew->read_tag_s);
+        if (tag == clew_tag_unknown) {
+                //clew_todof("tag is invalid, '%s' = '%s'", clew->read_tag_k, clew->read_tag_v);
+                goto out;
         }
 
         keep = 0;
