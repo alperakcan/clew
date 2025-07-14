@@ -368,9 +368,6 @@ static int input_callback_way_start (struct clew_input *input, void *context)
 bail:   return -1;
 }
 
-uint64_t min_ref = UINT64_MAX;
-uint64_t max_ref = 0;
-
 static int input_callback_way_end (struct clew_input *input, void *context)
 {
         int rc;
@@ -407,8 +404,6 @@ static int input_callback_way_end (struct clew_input *input, void *context)
 
         for (i = 0, il = clew_stack_count(&clew->read_refs); i < il; i++) {
                 ref = clew_stack_at_uint64(&clew->read_refs, i);
-                min_ref = MIN(ref, min_ref);
-                max_ref = MAX(ref, max_ref);
                 rc = clew_stack_push_uint64(&clew->node_ids, ref);
                 if (rc < 0) {
                         clew_errorf("can not push node id");
@@ -483,11 +478,14 @@ static int input_callback_tag_start (struct clew_input *input, void *context)
 
         (void) input;
 
-        if (clew_stack_peek_uint32(&clew->read_state) != CLEW_READ_STATE_NODE &&
-            clew_stack_peek_uint32(&clew->read_state) != CLEW_READ_STATE_WAY &&
-            clew_stack_peek_uint32(&clew->read_state) != CLEW_READ_STATE_RELATION) {
-                clew_errorf("read state is invalid, %d != %d || %d || %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_NODE, CLEW_READ_STATE_WAY, CLEW_READ_STATE_RELATION);
-                goto bail;
+        switch (clew_stack_peek_uint32(&clew->read_state)) {
+                case CLEW_READ_STATE_NODE:
+                case CLEW_READ_STATE_WAY:
+                case CLEW_READ_STATE_RELATION:
+                        break;
+                default:
+                       clew_errorf("read state is invalid, %d != %d || %d || %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_NODE, CLEW_READ_STATE_WAY, CLEW_READ_STATE_RELATION);
+                        goto bail;
         }
         clew_stack_push_uint32(&clew->read_state, CLEW_READ_STATE_TAG);
 
@@ -521,14 +519,23 @@ static int input_callback_tag_end (struct clew_input *input, void *context)
                 case CLEW_READ_STATE_NODE:
                         keep_tags = clew->options.keep_tags_node;
                         drop_tags = clew->options.drop_tags_node;
+                        if (clew->options.keep_nodes == 0) {
+                                goto out;
+                        }
                         break;
                 case CLEW_READ_STATE_WAY:
                         keep_tags = clew->options.keep_tags_way;
                         drop_tags = clew->options.drop_tags_way;
+                        if (clew->options.keep_ways == 0) {
+                                goto out;
+                        }
                         break;
                 case CLEW_READ_STATE_RELATION:
                         keep_tags = clew->options.keep_tags_relation;
                         drop_tags = clew->options.drop_tags_relation;
+                        if (clew->options.keep_relations == 0) {
+                                goto out;
+                        }
                         break;
                 default:
                         clew_errorf("read state is invalid, %d != %d || %d || %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_NODE, CLEW_READ_STATE_WAY, CLEW_READ_STATE_RELATION);
@@ -719,11 +726,14 @@ static int input_callback_id (struct clew_input *input, void *context, uint64_t 
 
         (void) input;
 
-        if (clew_stack_peek_uint32(&clew->read_state) != CLEW_READ_STATE_NODE &&
-            clew_stack_peek_uint32(&clew->read_state) != CLEW_READ_STATE_WAY &&
-            clew_stack_peek_uint32(&clew->read_state) != CLEW_READ_STATE_RELATION) {
-                clew_errorf("read state is invalid, %d != %d || %d || %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_NODE, CLEW_READ_STATE_WAY, CLEW_READ_STATE_RELATION);
-                goto bail;
+        switch (clew_stack_peek_uint32(&clew->read_state)) {
+                case CLEW_READ_STATE_NODE:
+                case CLEW_READ_STATE_WAY:
+                case CLEW_READ_STATE_RELATION:
+                        break;
+                default:
+                       clew_errorf("read state is invalid, %d != %d || %d || %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_NODE, CLEW_READ_STATE_WAY, CLEW_READ_STATE_RELATION);
+                        goto bail;
         }
 
         clew->read_id = id;
@@ -773,10 +783,14 @@ static int input_callback_ref (struct clew_input *input, void *context, uint64_t
 
         (void) input;
 
-        if (clew_stack_peek_uint32(&clew->read_state) != CLEW_READ_STATE_ND &&
-            clew_stack_peek_uint32(&clew->read_state) != CLEW_READ_STATE_MEMBER) {
-                clew_errorf("read state is invalid, %d != %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_ND);
-                goto bail;
+        switch (clew_stack_peek_uint32(&clew->read_state)) {
+                case CLEW_READ_STATE_ND:
+                case CLEW_READ_STATE_MEMBER:
+                case CLEW_READ_STATE_RELATION:
+                        break;
+                default:
+                       clew_errorf("read state is invalid, %d != %d || %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_ND, CLEW_READ_STATE_MEMBER);
+                        goto bail;
         }
 
         rc = clew_stack_push_uint64(&clew->read_refs, ref);
@@ -1259,7 +1273,7 @@ int main (int argc, char *argv[])
                 goto bail;
         }
         if (clew->options.filter == NULL) {
-                clew_errorf("expression is invalid, see help");
+                clew_errorf("filter is invalid, see help");
                 goto bail;
         }
 
@@ -1347,9 +1361,6 @@ int main (int argc, char *argv[])
                 clew_infof("nodes    : %ld", clew_stack_count(&clew->node_ids));
                 clew_infof("ways     : %ld", clew_stack_count(&clew->way_ids));
                 clew_infof("relations: %ld", clew_stack_count(&clew->relation_ids));
-
-                clew_infof("minref: %ld", min_ref);
-                clew_infof("maxref: %ld", max_ref);
 
                 if (input != NULL) {
                         clew_input_destroy(input);

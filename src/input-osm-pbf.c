@@ -263,36 +263,38 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                         goto bail;
                                 }
                         }
-                        if (input->callback_minlon != NULL) {
-                                rc = input->callback_minlon(&input->backend, input->callback_context, header_block->bbox->left / 100);
-                                if (rc < 0) {
-                                        clew_errorf("input callback_minlon failed");
-                                        osmpbf__header_block__free_unpacked(header_block, NULL);
-                                        goto bail;
+                        if (header_block->bbox != NULL) {
+                                if (input->callback_minlon != NULL) {
+                                        rc = input->callback_minlon(&input->backend, input->callback_context, header_block->bbox->left / 100);
+                                        if (rc < 0) {
+                                                clew_errorf("input callback_minlon failed");
+                                                osmpbf__header_block__free_unpacked(header_block, NULL);
+                                                goto bail;
+                                        }
                                 }
-                        }
-                        if (input->callback_minlat != NULL) {
-                                rc = input->callback_minlat(&input->backend, input->callback_context, header_block->bbox->top / 100);
-                                if (rc < 0) {
-                                        clew_errorf("input callback_minlat failed");
-                                        osmpbf__header_block__free_unpacked(header_block, NULL);
-                                        goto bail;
+                                if (input->callback_minlat != NULL) {
+                                        rc = input->callback_minlat(&input->backend, input->callback_context, header_block->bbox->top / 100);
+                                        if (rc < 0) {
+                                                clew_errorf("input callback_minlat failed");
+                                                osmpbf__header_block__free_unpacked(header_block, NULL);
+                                                goto bail;
+                                        }
                                 }
-                        }
-                        if (input->callback_maxlon != NULL) {
-                                rc = input->callback_maxlon(&input->backend, input->callback_context, header_block->bbox->right / 100);
-                                if (rc < 0) {
-                                        clew_errorf("input callback_maxlon failed");
-                                        osmpbf__header_block__free_unpacked(header_block, NULL);
-                                        goto bail;
+                                if (input->callback_maxlon != NULL) {
+                                        rc = input->callback_maxlon(&input->backend, input->callback_context, header_block->bbox->right / 100);
+                                        if (rc < 0) {
+                                                clew_errorf("input callback_maxlon failed");
+                                                osmpbf__header_block__free_unpacked(header_block, NULL);
+                                                goto bail;
+                                        }
                                 }
-                        }
-                        if (input->callback_maxlat != NULL) {
-                                rc = input->callback_maxlat(&input->backend, input->callback_context, header_block->bbox->bottom / 100);
-                                if (rc < 0) {
-                                        clew_errorf("input callback_maxlat failed");
-                                        osmpbf__header_block__free_unpacked(header_block, NULL);
-                                        goto bail;
+                                if (input->callback_maxlat != NULL) {
+                                        rc = input->callback_maxlat(&input->backend, input->callback_context, header_block->bbox->bottom / 100);
+                                        if (rc < 0) {
+                                                clew_errorf("input callback_maxlat failed");
+                                                osmpbf__header_block__free_unpacked(header_block, NULL);
+                                                goto bail;
+                                        }
                                 }
                         }
                         if (input->callback_bounds_end != NULL) {
