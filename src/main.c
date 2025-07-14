@@ -10,6 +10,7 @@
 #include "input.h"
 #include "bound.h"
 #include "point.h"
+#include "bitmap.h"
 #include "stack.h"
 #include "expression.h"
 #include "tag.h"
@@ -123,9 +124,9 @@ struct clew {
         int state;
 
         struct clew_stack read_state;
-        struct clew_stack node_ids;
-        struct clew_stack way_ids;
-        struct clew_stack relation_ids;
+        struct clew_bitmap node_ids;
+        struct clew_bitmap way_ids;
+        struct clew_bitmap relation_ids;
 
         uint64_t read_id;
         int64_t read_lon;
@@ -332,7 +333,7 @@ static int input_callback_node_end (struct clew_input *input, void *context)
                 goto out;
         }
 
-        rc = clew_stack_push_uint64(&clew->node_ids, clew->read_id);
+        rc = clew_bitmap_mark(&clew->node_ids, clew->read_id);
         if (rc < 0) {
                 clew_errorf("can not push node id");
                 goto bail;
@@ -351,8 +352,6 @@ static int input_callback_way_start (struct clew_input *input, void *context)
         if (clew->read_way_start == 0) {
                 clew_infof("  reading ways");
                 clew->read_way_start++;
-
-                clew_stack_sort_uint64(&clew->node_ids);
         }
 
         if (clew_stack_peek_uint32(&clew->read_state) != CLEW_READ_STATE_UNKNOWN) {
@@ -396,7 +395,7 @@ static int input_callback_way_end (struct clew_input *input, void *context)
                 goto out;
         }
 
-        rc = clew_stack_push_uint64(&clew->way_ids, clew->read_id);
+        rc = clew_bitmap_mark(&clew->way_ids, clew->read_id);
         if (rc < 0) {
                 clew_errorf("can not push way id");
                 goto bail;
@@ -404,7 +403,7 @@ static int input_callback_way_end (struct clew_input *input, void *context)
 
         for (i = 0, il = clew_stack_count(&clew->read_refs); i < il; i++) {
                 ref = clew_stack_at_uint64(&clew->read_refs, i);
-                rc = clew_stack_push_uint64(&clew->node_ids, ref);
+                rc = clew_bitmap_mark(&clew->node_ids, ref);
                 if (rc < 0) {
                         clew_errorf("can not push node id");
                         goto bail;
@@ -462,7 +461,7 @@ static int input_callback_relation_end (struct clew_input *input, void *context)
                 goto out;
         }
 
-        rc = clew_stack_push_uint64(&clew->relation_ids, clew->read_id);
+        rc = clew_bitmap_mark(&clew->relation_ids, clew->read_id);
         if (rc < 0) {
                 clew_errorf("can not push relation id");
                 goto bail;
@@ -993,9 +992,9 @@ int main (int argc, char *argv[])
         clew->read_tags         = clew_stack_init(sizeof(uint32_t));
         clew->read_refs         = clew_stack_init(sizeof(uint64_t));
 
-        clew->node_ids          = clew_stack_init2(sizeof(uint64_t), 64 * 1024);
-        clew->way_ids           = clew_stack_init2(sizeof(uint64_t), 64 * 1024);
-        clew->relation_ids      = clew_stack_init2(sizeof(uint64_t), 64 * 1024);
+        clew->node_ids          = clew_bitmap_init(8 * 1024  * 1024);
+        clew->way_ids           = clew_bitmap_init(8 * 1024  * 1024);
+        clew->relation_ids      = clew_bitmap_init(8 * 1024 * 1024);
 
         optind = 1;
         while (1) {
@@ -1412,13 +1411,9 @@ int main (int argc, char *argv[])
                         }
                 }
 
-                clew_stack_sort_uint64(&clew->node_ids);
-                clew_stack_sort_uint64(&clew->way_ids);
-                clew_stack_sort_uint64(&clew->relation_ids);
-
-                clew_infof("nodes    : %ld", clew_stack_count(&clew->node_ids));
-                clew_infof("ways     : %ld", clew_stack_count(&clew->way_ids));
-                clew_infof("relations: %ld", clew_stack_count(&clew->relation_ids));
+                clew_infof("nodes    : %ld", clew_bitmap_count(&clew->node_ids));
+                clew_infof("ways     : %ld", clew_bitmap_count(&clew->way_ids));
+                clew_infof("relations: %ld", clew_bitmap_count(&clew->relation_ids));
 
                 if (input != NULL) {
                         clew_input_destroy(input);
@@ -1438,9 +1433,9 @@ out:
                 clew_expression_destroy(clew->options.drop_tags_way);
                 clew_expression_destroy(clew->options.drop_tags_relation);
                 clew_stack_uninit(&clew->read_state);
-                clew_stack_uninit(&clew->node_ids);
-                clew_stack_uninit(&clew->way_ids);
-                clew_stack_uninit(&clew->relation_ids);
+                clew_bitmap_uninit(&clew->node_ids);
+                clew_bitmap_uninit(&clew->way_ids);
+                clew_bitmap_uninit(&clew->relation_ids);
                 clew_stack_uninit(&clew->read_tags);
                 clew_stack_uninit(&clew->read_refs);
                 clew_expression_destroy(clew->options.filter);

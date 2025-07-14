@@ -23,6 +23,7 @@ clew_files-y += \
 	input.c \
 	bound.c \
 	point.c \
+	bitmap.c \
 	stack.c \
 	expression.c \
 	tag.c \
