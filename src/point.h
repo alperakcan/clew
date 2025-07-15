@@ -88,8 +88,8 @@ static inline __attribute__ ((warn_unused_result)) double clew_point_segment_dis
 static inline __attribute__ ((warn_unused_result)) double clew_point_distance_euclidean (const struct clew_point *a, const struct clew_point *b)
 {
         static const double earthRadius = 6378137.0;
-        double dLat = (b->lat - a->lat) * M_PI / 180.00;
-        double dLng = (b->lon - a->lon) * M_PI / 180.00;
+        double dLat = ((b->lat - a->lat) * 1e-7) * M_PI / 180.00;
+        double dLng = ((b->lon - a->lon) * 1e-7) * M_PI / 180.00;
         double sindLat = sin(dLat / 2);
         double sindLng = sin(dLng / 2);
         double _a = pow(sindLat, 2) + pow(sindLng, 2) * cos((a->lat * M_PI / 180.00)) * cos((b->lat * M_PI / 180.00));

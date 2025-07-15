@@ -12,6 +12,8 @@
 #include "point.h"
 #include "bitmap.h"
 #include "stack.h"
+#include "khash.h"
+#include "pqueue.h"
 #include "expression.h"
 #include "tag.h"
 
@@ -74,13 +76,21 @@ static struct option g_long_options[] = {
         { 0,                    0,                      0,      0                               }
 };
 
+#define mesh_node_hash_func(key)		kh_int64_hash_func(key)
+#define mesh_node_hash_equal(a, b)		(a == b)
+KHASH_INIT(mesh_nodes, uint64_t, struct clew_mesh_node *, 1, mesh_node_hash_func, mesh_node_hash_equal);
+
 enum {
         CLEW_STATE_INITIAL                      = 0,
         CLEW_STATE_SELECT                       = 1,
-        CLEW_STATE_EXTRACT                      = 2
+        CLEW_STATE_EXTRACT                      = 2,
+        CLEW_STATE_BUILD_MESH                   = 3,
+        CLEW_STATE_SOLVE_ROUTES                 = 4
 #define CLEW_STATE_INITIAL                      CLEW_STATE_INITIAL
 #define CLEW_STATE_SELECT                       CLEW_STATE_SELECT
 #define CLEW_STATE_EXTRACT                      CLEW_STATE_EXTRACT
+#define CLEW_STATE_BUILD_MESH                   CLEW_STATE_BUILD_MESH
+#define CLEW_STATE_SOLVE_ROUTES                 CLEW_STATE_SOLVE_ROUTES
 };
 
 enum {
@@ -157,6 +167,34 @@ struct clew_relation {
         uint64_t *refs;
 };
 
+struct clew_mesh_way_type {
+	uint32_t tag;
+	uint32_t oneway;
+	uint32_t maxspeed;
+};
+
+struct clew_mesh_way {
+        struct clew_way *way;
+        uint32_t tag;
+        uint32_t oneway;
+        uint32_t maxspeed;
+};
+
+struct clew_mesh_node_neighbour {
+        struct clew_mesh_node *mesh_node;
+        double distance;
+};
+
+struct clew_mesh_node {
+        struct clew_node *node;
+        struct clew_stack mesh_ways;
+        struct clew_stack mesh_neighbours;
+
+        double pqueue_cost;
+        uint64_t pqueue_pos;
+        struct clew_mesh_node *pqueue_prev;
+};
+
 struct clew {
         struct clew_options options;
 
@@ -169,6 +207,9 @@ struct clew {
         struct clew_stack nodes;
         struct clew_stack ways;
         struct clew_stack relations;
+
+        struct clew_stack mesh_ways;
+        khash_t(mesh_nodes) *mesh_nodes;
 
         struct clew_stack read_state;
 
@@ -189,6 +230,28 @@ struct clew {
         uint64_t read_node_start;
         uint64_t read_way_start;
         uint64_t read_relation_start;
+};
+
+static const struct clew_mesh_way_type clew_mesh_way_types[] = {
+        { clew_tag_highway_motorway,            clew_tag_oneway_yes,    clew_tag_maxspeed_140 },
+        { clew_tag_highway_motorway_link,       clew_tag_oneway_yes,    clew_tag_maxspeed_110 },
+        { clew_tag_highway_trunk,               clew_tag_oneway_yes,    clew_tag_maxspeed_110 },
+        { clew_tag_highway_trunk_link,          clew_tag_oneway_yes,    clew_tag_maxspeed_90 },
+        { clew_tag_highway_primary,             clew_tag_oneway_no,     clew_tag_maxspeed_90 },
+        { clew_tag_highway_primary_link,        clew_tag_oneway_no,     clew_tag_maxspeed_70 },
+        { clew_tag_highway_secondary,           clew_tag_oneway_no,     clew_tag_maxspeed_70 },
+        { clew_tag_highway_secondary_link,      clew_tag_oneway_no,     clew_tag_maxspeed_50 },
+        { clew_tag_highway_tertiary,            clew_tag_oneway_no,     clew_tag_maxspeed_50 },
+        { clew_tag_highway_tertiary_link,       clew_tag_oneway_no,     clew_tag_maxspeed_30 },
+        { clew_tag_highway_unclassified,        clew_tag_oneway_no,     clew_tag_maxspeed_30 },
+        { clew_tag_highway_road,                clew_tag_oneway_no,     clew_tag_maxspeed_30 },
+        { clew_tag_highway_residential,         clew_tag_oneway_no,     clew_tag_maxspeed_30 },
+        { clew_tag_highway_living_street,       clew_tag_oneway_no,     clew_tag_maxspeed_20 },
+        { clew_tag_highway_service,             clew_tag_oneway_no,     clew_tag_maxspeed_30 },
+        { clew_tag_highway_track,               clew_tag_oneway_no,     clew_tag_maxspeed_30 },
+        { clew_tag_highway_path,                clew_tag_oneway_no,     clew_tag_maxspeed_30 },
+        { clew_tag_highway_cycleway,            clew_tag_oneway_no,     clew_tag_maxspeed_30 },
+        { clew_tag_highway_bridleway,           clew_tag_oneway_no,     clew_tag_maxspeed_30 },
 };
 
 static const char *g_filter_preset_motorcycle_scenic =
@@ -213,7 +276,7 @@ static const char *g_filter_preset_motorcycle_scenic_plus =
         "highway_road or "
         "highway_residential or "
         "highway_living_street or "
-        "(( highway_track or highway_path or highway_footway or highway_bridleway or highway_cycleway ) and surface_asphalt )"
+        "(( highway_track or highway_path ) and surface_asphalt )"
         ") "
         "and not toll_yes "
         "and not tunnel_yes";
@@ -279,6 +342,8 @@ static int input_callback_extract_k (struct clew_input *input, void *context, co
 static int input_callback_extract_v (struct clew_input *input, void *context, const char *v);
 static int input_callback_extract_error (struct clew_input *input, void *context, unsigned int reason);
 
+static void clew_mesh_node_destroy (struct clew_mesh_node *mnode);
+
 static void clew_node_destroy (struct clew_node *node);
 static void clew_way_destroy (struct clew_way *way);
 static void clew_relation_destroy (struct clew_relation *relation);
@@ -288,43 +353,43 @@ static int clew_clip_strategy_value (const char *strategy);
 
 static void print_help (const char *pname)
 {
-	fprintf(stdout, "%s usage:\n", pname);
-	fprintf(stdout, "\n");
-	fprintf(stdout, "  --input              / -i : input path\n");
-	fprintf(stdout, "  --output             / -o: output path\n");
-	fprintf(stdout, "  --clip-path              : clip path, ex: lon1,lat1 lon2,lat2 ... (default: \"\")\n");
-	fprintf(stdout, "  --clip-bound             : clip bound, ex: minlon,minlat,maxlon,maxlat (default: \"\")\n");
-	fprintf(stdout, "  --clip-offset        / -c: clip offset in meters (default: 0)\n");
-	fprintf(stdout, "  --clip-strategy          : clip strategy; simple, complete_ways, smart (default: complete_ways)\n");
-	fprintf(stdout, "  --filter             / -f: filter expression (default: \"\")\n");
-	fprintf(stdout, "  --points             / -p: points to visit, ex: lon1,lat1 lon2,lat2 ... (default: \"\")\n");
-	fprintf(stdout, "  --keep-nodes         / -n: filter nodes (default: 0)\n");
-	fprintf(stdout, "  --keep-ways          / -w: filter ways (default: 0)\n");
-	fprintf(stdout, "  --keep-relations     / -r: filter relations (default: 0)\n");
-	fprintf(stdout, "  --keep-tags          / -k: keep tag (default: \"\")\n");
-	fprintf(stdout, "  --keep-tags-node         : keep node tag (default: \"\")\n");
-	fprintf(stdout, "  --keep-tags-way          : keep way tag (default: \"\")\n");
-	fprintf(stdout, "  --keep-tags-relation     : keep relation tag (default: \"\")\n");
-	fprintf(stdout, "\n");
+        fprintf(stdout, "%s usage:\n", pname);
+        fprintf(stdout, "\n");
+        fprintf(stdout, "  --input              / -i : input path\n");
+        fprintf(stdout, "  --output             / -o: output path\n");
+        fprintf(stdout, "  --clip-path              : clip path, ex: lon1,lat1 lon2,lat2 ... (default: \"\")\n");
+        fprintf(stdout, "  --clip-bound             : clip bound, ex: minlon,minlat,maxlon,maxlat (default: \"\")\n");
+        fprintf(stdout, "  --clip-offset        / -c: clip offset in meters (default: 0)\n");
+        fprintf(stdout, "  --clip-strategy          : clip strategy; simple, complete_ways, smart (default: complete_ways)\n");
+        fprintf(stdout, "  --filter             / -f: filter expression (default: \"\")\n");
+        fprintf(stdout, "  --points             / -p: points to visit, ex: lon1,lat1 lon2,lat2 ... (default: \"\")\n");
+        fprintf(stdout, "  --keep-nodes         / -n: filter nodes (default: 0)\n");
+        fprintf(stdout, "  --keep-ways          / -w: filter ways (default: 0)\n");
+        fprintf(stdout, "  --keep-relations     / -r: filter relations (default: 0)\n");
+        fprintf(stdout, "  --keep-tags          / -k: keep tag (default: \"\")\n");
+        fprintf(stdout, "  --keep-tags-node         : keep node tag (default: \"\")\n");
+        fprintf(stdout, "  --keep-tags-way          : keep way tag (default: \"\")\n");
+        fprintf(stdout, "  --keep-tags-relation     : keep relation tag (default: \"\")\n");
+        fprintf(stdout, "\n");
         fprintf(stdout, "clip strategies;\n");
-	fprintf(stdout, "\n");
+        fprintf(stdout, "\n");
         fprintf(stdout, "  simple: Runs in a single pass. The extract will contain all nodes inside the region and all ways referencing those nodes "
                         "as well as all relations referencing any nodes or ways already included. Ways crossing the region boundary will not be "
                         "reference-complete. Relations will not be reference-complete. This strategy is fast, because it reads the input only once, "
                         "but the result is not enough for most use cases. It is the only strategy that will work when reading from a socket or pipe.\n");
-	fprintf(stdout, "\n");
+        fprintf(stdout, "\n");
         fprintf(stdout, "  complete_ways: Runs in two passes. The extract will contain all nodes inside the region and all ways referencing those "
                         "nodes as well as all nodes referenced by those ways. The extract will also contain all relations referenced by nodes inside "
                         "the region or ways already included and, recursively, their parent relations. The ways are reference-complete, but the "
                         "relations are not.\n");
-	fprintf(stdout, "\n");
+        fprintf(stdout, "\n");
         fprintf(stdout, "  smart: Runs in three passes. The extract will contain all nodes inside the region and all ways referencing those nodes as "
                         "well as all nodes referenced by those ways. The extract will also contain all relations referenced by nodes inside the region "
                         "or ways already included and, recursively, their parent relations. The extract will also contain all nodes and ways (and the "
                         "nodes they reference) referenced by relations tagged “type=multipolygon” directly referencing any nodes in the region or ways "
                         "referencing nodes in the region. The ways are reference-complete, and all multipolygon relations referencing nodes in the "
                         "regions or ways that have nodes in the region are reference-complete. Other relations are not.\n");
-	fprintf(stdout, "\n");
+        fprintf(stdout, "\n");
         fprintf(stdout, "filter;\n");
         fprintf(stdout, "  Logical expression using predefined tags and operators: and, or, not, (, ). The filter applies to each route segment's tags "
                         "to determine inclusion.\n");
@@ -385,8 +450,8 @@ static void print_help (const char *pname)
                         "        %s\n", g_filter_preset_motorcycle_scenic_plus);
         fprintf(stdout, "\n");
         fprintf(stdout, "highway tags;\n");
-	fprintf(stdout, "\n");
-	fprintf(stdout, "  roads:\n");
+        fprintf(stdout, "\n");
+        fprintf(stdout, "  roads:\n");
         fprintf(stdout, "    highway_motorway      : A restricted access major divided highway, normally with 2 or more running lanes plus emergency hard shoulder. Equivalent to the Freeway, Autobahn, etc..\n");
         fprintf(stdout, "    highway_trunk         : The most important roads in a country's system that aren't motorways. (Need not necessarily be a divided highway.\n");
         fprintf(stdout, "    highway_primary       : The next most important roads in a country's system. (Often link larger towns.)\n");
@@ -394,15 +459,15 @@ static void print_help (const char *pname)
         fprintf(stdout, "    highway_tertiary      : The next most important roads in a country's system. (Often link smaller towns and villages)\n");
         fprintf(stdout, "    highway_unclassified  : The least important through roads in a country's system i.e. minor roads of a lower classification than tertiary, but which serve a purpose other than access to properties. (Often link villages and hamlets.)\n");
         fprintf(stdout, "    highway_residential   : Roads which serve as an access to housing, without function of connecting settlements. Often lined with housing.\n");
-	fprintf(stdout, "\n");
-	fprintf(stdout, "  link roads:\n");
+        fprintf(stdout, "\n");
+        fprintf(stdout, "  link roads:\n");
         fprintf(stdout, "    highway_motorway_link : The link roads (sliproads/ramps) leading to/from a motorway from/to a motorway or lower class highway. Normally with the same motorway restrictions.\n");
         fprintf(stdout, "    highway_trunk_link    : The link roads (sliproads/ramps) leading to/from a trunk road from/to a trunk road or lower class highway.\n");
         fprintf(stdout, "    highway_primary_link  : The link roads (sliproads/ramps) leading to/from a primary road from/to a primary road or lower class highway.\n");
         fprintf(stdout, "    highway_secondary_link: The link roads (sliproads/ramps) leading to/from a secondary road from/to a secondary road or lower class highway.\n");
         fprintf(stdout, "    highway_tertiary_link : The link roads (sliproads/ramps) leading to/from a tertiary road from/to a tertiary road or lower class highway.\n");
-	fprintf(stdout, "\n");
-	fprintf(stdout, "  special road types:\n");
+        fprintf(stdout, "\n");
+        fprintf(stdout, "  special road types:\n");
         fprintf(stdout, "    highway_living_street : For living streets, which are residential streets where pedestrians have legal priority over cars, speeds are kept very low.\n");
         fprintf(stdout, "    highway_service       : For access roads to, or within an industrial estate, camp site, business park, car park, alleys, etc.\n");
         fprintf(stdout, "    highway_pedestrian    : For roads used mainly/exclusively for pedestrians in shopping and some residential areas which may allow access by motorised vehicles only for very limited periods of the day.\n");
@@ -412,8 +477,8 @@ static void print_help (const char *pname)
         fprintf(stdout, "    highway_raceway       : A course or track for (motor) racing\n");
         fprintf(stdout, "    highway_road          : A road/way/street/motorway/etc. of unknown type. It can stand for anything ranging from a footpath to a motorway.\n");
         fprintf(stdout, "    highway_bus_way       : A dedicated roadway for bus rapid transit systems\n");
-	fprintf(stdout, "\n");
-	fprintf(stdout, "  paths:\n");
+        fprintf(stdout, "\n");
+        fprintf(stdout, "  paths:\n");
         fprintf(stdout, "    highway_footway       : For designated footpaths; i.e., mainly/exclusively for pedestrians. This includes walking tracks and gravel paths.\n");
         fprintf(stdout, "    highway_bridleway     : For horse riders. Pedestrians are usually also permitted, cyclists may be permitted depending on local rules/laws. Motor vehicles are forbidden.\n");
         fprintf(stdout, "    highway_steps         : For flights of steps (stairs) on footways.\n");
@@ -1243,12 +1308,12 @@ static int input_callback_extract_way_end (struct clew_input *input, void *conte
 
         way->nrefs = clew_stack_count(&clew->read_refs);
         if (way->nrefs > 0) {
-                way->refs  = malloc(sizeof(uint32_t) * way->nrefs);
+                way->refs  = malloc(sizeof(uint64_t) * way->nrefs);
                 if (way->refs == NULL) {
                         clew_errorf("can not allocate memory");
                         goto bail;
                 }
-                memcpy(way->refs, clew_stack_buffer(&clew->read_refs), sizeof(uint32_t) * way->nrefs);
+                memcpy(way->refs, clew_stack_buffer(&clew->read_refs), sizeof(uint64_t) * way->nrefs);
         }
 
         rc = clew_stack_push_ptr(&clew->ways, way);
@@ -1760,6 +1825,34 @@ static void relation_stack_destroy_element (void *context, void *elem)
         clew_relation_destroy(*(struct clew_relation **) elem);
 }
 
+static int mesh_node_pqueue_compare (const void *a, const void *b)
+{
+        const struct clew_mesh_node *t1 = (const struct clew_mesh_node *) a;
+        const struct clew_mesh_node *t2 = (const struct clew_mesh_node *) b;
+        if (t1->node->id < t2->node->id) return -1;
+        if (t1->node->id > t2->node->id) return 1;
+        return 0;
+}
+
+static void mesh_node_pqueue_setpos (void *a, uint64_t position)
+{
+        struct clew_mesh_node *t1 = (struct clew_mesh_node *) a;
+        t1->pqueue_pos = position;
+}
+
+static uint64_t mesh_node_pqueue_getpos (const void *a)
+{
+        const struct clew_mesh_node *t1 = (const struct clew_mesh_node *) a;
+        return t1->pqueue_pos;
+}
+
+static void clew_mesh_node_destroy (struct clew_mesh_node *mnode)
+{
+        clew_stack_uninit(&mnode->mesh_ways);
+        clew_stack_uninit(&mnode->mesh_neighbours);
+        free(mnode);
+}
+
 static void clew_node_destroy (struct clew_node *node)
 {
         if (node == NULL) {
@@ -1828,6 +1921,18 @@ int main (int argc, char *argv[])
         uint64_t i;
         uint64_t il;
 
+        uint64_t j;
+        uint64_t jl;
+
+        uint64_t w;
+        uint64_t wl;
+
+        uint64_t t;
+        uint64_t tl;
+
+        uint64_t r;
+        uint64_t rl;
+
         struct clew_input *input;
         struct clew_input_init_options input_init_options;
 
@@ -1868,12 +1973,14 @@ int main (int argc, char *argv[])
         clew->read_state        = clew_stack_init(sizeof(uint32_t));
         clew->read_tags         = clew_stack_init(sizeof(uint32_t));
         clew->read_refs         = clew_stack_init(sizeof(uint64_t));
-        clew->node_ids          = clew_bitmap_init(64 * 1024  * 1024);
-        clew->way_ids           = clew_bitmap_init(64 * 1024  * 1024);
-        clew->relation_ids      = clew_bitmap_init(64 * 1024 * 1024);
+        clew->node_ids          = clew_bitmap_init(64 * 1024);
+        clew->way_ids           = clew_bitmap_init(64 * 1024);
+        clew->relation_ids      = clew_bitmap_init(64 * 1024);
         clew->nodes             = clew_stack_init4(sizeof(struct clew_node *), 64 * 1024, node_stack_destroy_element, NULL);
         clew->ways              = clew_stack_init4(sizeof(struct clew_way *), 64 * 1024, way_stack_destroy_element, NULL);
         clew->relations         = clew_stack_init4(sizeof(struct clew_relation *), 64 * 1024, relation_stack_destroy_element, NULL);
+        clew->mesh_ways         = clew_stack_init2(sizeof(struct clew_mesh_way), 64 * 1024);
+        clew->mesh_nodes        = kh_init(mesh_nodes);
 
         optind = 1;
         while (1) {
@@ -2414,6 +2521,237 @@ int main (int argc, char *argv[])
         clew_infof("    ways     : %ld", clew_bitmap_count(&clew->way_ids));
         clew_infof("    relations: %ld", clew_bitmap_count(&clew->relation_ids));
 
+        clew_infof("building mesh");
+        clew->state = CLEW_STATE_BUILD_MESH;
+
+        clew_infof("  building mesh ways");
+        for (w = 0, wl = clew_stack_count(&clew->ways); w < wl; w++) {
+                struct clew_way *way;
+                struct clew_mesh_way mway;
+
+                mway.way      = NULL;
+                mway.tag      = clew_tag_unknown;
+                mway.oneway   = clew_tag_oneway_no;
+                mway.maxspeed = clew_tag_maxspeed_20;
+
+                way = clew_stack_at_ptr(&clew->ways, w);
+
+                for (i = 0, il = sizeof(clew_mesh_way_types) / sizeof(clew_mesh_way_types[0]); i < il; i++) {
+                        for (t = 0, tl = way->ntags; t < tl; t++) {
+                                if (clew_mesh_way_types[i].tag == way->tags[t]) {
+                                        mway.tag      = clew_mesh_way_types[i].tag;
+                                        mway.oneway   = clew_mesh_way_types[i].oneway;
+                                        mway.maxspeed = clew_mesh_way_types[i].maxspeed;
+                                        break;
+                                }
+                        }
+                        if (t < tl) {
+                                break;
+                        }
+                }
+                if (mway.tag == clew_tag_unknown) {
+                        clew_errorf("way: %ld with invalid tags", way->id);
+                        for (t = 0, tl = way->ntags; t < tl; t++) {
+                                clew_errorf("  %d, %s", way->tags[t], clew_tag_string(way->tags[t]));
+                        }
+                        continue;
+                }
+
+                for (t = 0, tl = way->ntags; t < tl; t++) {
+                        if (way->tags[t] == clew_tag_oneway_no ||
+                            way->tags[t] == clew_tag_oneway_yes) {
+                                mway.oneway = way->tags[t];
+                                break;
+                        }
+                }
+
+                for (t = 0, tl = way->ntags; t < tl; t++) {
+                        if (clew_tag_is_group_maxspeed(way->tags[t])) {
+                                mway.maxspeed = way->tags[t];
+                                break;
+                        }
+                }
+
+                mway.way = way;
+
+                rc = clew_stack_push(&clew->mesh_ways, &mway);
+                if (rc < 0) {
+                        clew_errorf("can not push mesh way");
+                        goto bail;
+                }
+        }
+        clew_infof("    ways: %ld", clew_stack_count(&clew->mesh_ways));
+
+        clew_infof("  building mesh nodes");
+        for (w = 0, wl = clew_stack_count(&clew->mesh_ways); w < wl; w++) {
+                struct clew_way *way;
+                struct clew_mesh_way *mway;
+
+                struct clew_node *node;
+                struct clew_node _knode;
+                struct clew_node *knode;
+
+                khiter_t k;
+                struct clew_mesh_node *mnode;
+                struct clew_mesh_node *pmnode;
+                struct clew_mesh_node _kmnode;
+                struct clew_mesh_node *kmnode;
+
+                struct clew_mesh_node_neighbour *mnodeneigh;
+                struct clew_mesh_node_neighbour _mnodeneigh;
+
+                mway = clew_stack_at(&clew->mesh_ways, w);
+                way  = mway->way;
+
+                pmnode = NULL;
+                for (r = 0, rl = way->nrefs; r < rl; r++) {
+                        knode = &_knode;
+                        knode->id = way->refs[r];
+                        node = *(struct clew_node **) clew_stack_search(&clew->nodes, &knode, node_stack_compare_elements);
+
+                        kmnode = &_kmnode;
+                        kmnode->node = &_knode;
+                        kmnode->node->id = node->id;
+                        k = kh_get(mesh_nodes, clew->mesh_nodes, kmnode->node->id);
+                        if (k == kh_end(clew->mesh_nodes)) {
+                                mnode = malloc(sizeof(struct clew_mesh_node));
+                                if (mnode == NULL) {
+                                        clew_errorf("can not allocate memory");
+                                        goto bail;
+                                }
+                                mnode->node = node;
+                                mnode->mesh_ways       = clew_stack_init2(sizeof(struct clew_mesh_way *), 2);
+                                mnode->mesh_neighbours = clew_stack_init2(sizeof(struct clew_mesh_node_neighbour), 2);
+                                k = kh_put(mesh_nodes, clew->mesh_nodes, mnode->node->id, &rc);
+                                if (rc < 0) {
+                                        clew_errorf("can not push mesh node");
+                                        clew_mesh_node_destroy(mnode);
+                                        goto bail;
+                                }
+                                kh_value(clew->mesh_nodes, k) = mnode;
+                        } else {
+                                mnode = kh_val(clew->mesh_nodes, k);
+                        }
+
+                        rc = clew_stack_push(&mnode->mesh_ways, &mway);
+                        if (rc < 0) {
+                                clew_errorf("can not push mesh way");
+                                goto bail;
+                        }
+
+                        if (pmnode != NULL) {
+                                struct clew_point a = clew_point_init(pmnode->node->lon, pmnode->node->lat);
+                                struct clew_point b = clew_point_init(mnode->node->lon, mnode->node->lat);
+                                double distance = clew_point_distance_euclidean(&a, &b) * (1.00 / (double) ( mway->maxspeed - clew_tag_maxspeed_0));
+
+                                mnodeneigh = &_mnodeneigh;
+                                mnodeneigh->distance = distance;
+                                mnodeneigh->mesh_node = mnode;
+                                rc = clew_stack_push(&pmnode->mesh_neighbours, &mnodeneigh);
+                                if (rc < 0) {
+                                        clew_errorf("can not push mesh node neighbour");
+                                        goto bail;
+                                }
+
+                                if (mway->oneway == clew_tag_oneway_no) {
+                                        mnodeneigh = &_mnodeneigh;
+                                        mnodeneigh->distance = distance;
+                                        mnodeneigh->mesh_node = pmnode;
+                                        rc = clew_stack_push(&mnode->mesh_neighbours, &mnodeneigh);
+                                        if (rc < 0) {
+                                                clew_errorf("can not push mesh node neighbour");
+                                                goto bail;
+                                        }
+                                }
+                        }
+
+                        pmnode = mnode;
+                }
+        }
+        clew_infof("    nodes: %d", kh_size(clew->mesh_nodes));
+
+        clew_infof("solving routes");
+        clew->state = CLEW_STATE_SOLVE_ROUTES;
+
+        for (i = 0, il = clew_stack_count(&clew->options.points); i < il; i += 2) {
+                for (j = 0, jl = clew_stack_count(&clew->options.points); j < jl; j += 2) {
+                        struct clew_pqueue *pqueue;
+
+                        khiter_t k;
+                        struct clew_mesh_node *mnode;
+
+                        double distance;
+                        double sdistance;
+                        double ddistance;
+                        struct clew_mesh_node *smnode;
+                        struct clew_mesh_node *dmnode;
+
+                        struct clew_point npoint;
+                        struct clew_point spoint;
+                        struct clew_point dpoint;
+
+                        if (i == j) {
+                                continue;
+                        }
+
+                        clew_infof("  %ld/%ld: %.7f,%.7f -> %.7f,%.7f",
+                                i / 2, j / 2,
+                                clew_stack_at_int32(&clew->options.points, i + 0) / 1e7, clew_stack_at_int32(&clew->options.points, i + 1) / 1e7,
+                                clew_stack_at_int32(&clew->options.points, j + 0) / 1e7, clew_stack_at_int32(&clew->options.points, j + 1) / 1e7);
+
+                        clew_infof("    building pqueue");
+
+                        sdistance = INFINITY;
+                        ddistance = INFINITY;
+                        smnode    = NULL;
+                        dmnode    = NULL;
+
+                        spoint = clew_point_init(clew_stack_at_int32(&clew->options.points, i + 0), clew_stack_at_int32(&clew->options.points, i + 1));
+                        dpoint = clew_point_init(clew_stack_at_int32(&clew->options.points, j + 0), clew_stack_at_int32(&clew->options.points, j + 1));
+
+                        pqueue = clew_pqueue_create(
+                                kh_size(clew->mesh_nodes),
+                                64 * 1024,
+                                mesh_node_pqueue_compare,
+                                mesh_node_pqueue_setpos,
+                                mesh_node_pqueue_getpos
+                        );
+
+                        for (k = kh_begin(clew->mesh_nodes); k != kh_end(clew->mesh_nodes); k++) {
+                                if (!kh_exist(clew->mesh_nodes, k)) {
+                                        continue;
+                                }
+                                mnode = kh_val(clew->mesh_nodes, k);
+                                mnode->pqueue_cost = INFINITY;
+                                mnode->pqueue_pos  = 0;
+                                mnode->pqueue_prev = NULL;
+                                rc = clew_pqueue_add(pqueue, mnode);
+                                if (rc < 0) {
+                                        clew_errorf("can not mesh node to pqueue");
+                                        clew_pqueue_destroy(pqueue);
+                                        goto bail;
+                                }
+
+                                npoint = clew_point_init(mnode->node->lon, mnode->node->lat);
+                                distance = clew_point_distance_euclidean(&spoint, &npoint);
+                                if (distance < sdistance) {
+                                        smnode = mnode;
+                                        sdistance = distance;
+                                }
+                                distance = clew_point_distance_euclidean(&dpoint, &npoint);
+                                if (distance < ddistance) {
+                                        dmnode = mnode;
+                                        ddistance = distance;
+                                }
+                        }
+                        clew_infof("      nodes      : %ld", clew_pqueue_count(pqueue));
+                        clew_infof("      source     : %ld, %.3f meters", smnode->node->id, sdistance);
+                        clew_infof("      destination: %ld, %.3f meters", dmnode->node->id, ddistance);
+
+                        clew_pqueue_destroy(pqueue);
+                }
+        }
+
 out:
         if (clew != NULL) {
                 clew_stack_uninit(&clew->options.inputs);
@@ -2434,6 +2772,19 @@ out:
                 clew_stack_uninit(&clew->nodes);
                 clew_stack_uninit(&clew->ways);
                 clew_stack_uninit(&clew->relations);
+                clew_stack_uninit(&clew->mesh_ways);
+                {
+                        khiter_t k;
+                        struct clew_mesh_node *mnode;
+                        for (k = kh_begin(clew->mesh_nodes); k != kh_end(clew->mesh_nodes); k++) {
+                                if (!kh_exist(clew->mesh_nodes, k)) {
+                                        continue;
+                                }
+                                mnode = kh_val(clew->mesh_nodes, k);
+                                clew_mesh_node_destroy(mnode);
+                        }
+                }
+                kh_destroy(mesh_nodes, clew->mesh_nodes);
                 clew_stack_uninit(&clew->read_tags);
                 clew_stack_uninit(&clew->read_refs);
                 clew_expression_destroy(clew->options.filter);

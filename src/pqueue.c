@@ -14,28 +14,28 @@
 #define pqueue_right(i)         ((2 * (i)) + 1)
 #define pqueue_parent(i)        ((i) / 2)
 
-struct clew_pqueue_head {
+struct clew_pqueue {
         void **entries;
         uint64_t count;
         uint64_t size;
         uint64_t step;
-        int (*compare) (void *a, void *b);
+        int (*compare) (const void *a, const void *b);
         void (*setpos) (void *entry, uint64_t position);
-        uint64_t (*getpos) (void *entry);
+        uint64_t (*getpos) (const void *entry);
 };
 
-struct clew_pqueue_head * clew_pqueue_create (
+struct clew_pqueue * clew_pqueue_create (
         uint64_t size, uint64_t step,
-        int (*compare) (void *a, void *b),
+        int (*compare) (const void *a, const void *b),
         void (*setpos) (void *entry, uint64_t position),
-        uint64_t (*getpos) (void *entry))
+        uint64_t (*getpos) (const void *entry))
 {
-        struct clew_pqueue_head *head;
-        head = malloc(sizeof(struct clew_pqueue_head));
+        struct clew_pqueue *head;
+        head = malloc(sizeof(struct clew_pqueue));
         if (head == NULL) {
                 goto bail;
         }
-        memset(head, 0, sizeof(struct clew_pqueue_head));
+        memset(head, 0, sizeof(struct clew_pqueue));
         head->size = size;
         head->step = step ? step : 1;
         head->compare = compare;
@@ -55,7 +55,7 @@ bail:   if (head != NULL) {
         return NULL;
 }
 
-void clew_pqueue_destroy (struct clew_pqueue_head *head)
+void clew_pqueue_destroy (struct clew_pqueue *head)
 {
         if (head == NULL) {
                 return;
@@ -66,12 +66,12 @@ void clew_pqueue_destroy (struct clew_pqueue_head *head)
         free(head);
 }
 
-uint64_t clew_pqueue_count (struct clew_pqueue_head *head)
+uint64_t clew_pqueue_count (struct clew_pqueue *head)
 {
         return head->count -1;
 }
 
-static inline void pqueue_shift_up (struct clew_pqueue_head *head, uint64_t i)
+static inline void pqueue_shift_up (struct clew_pqueue *head, uint64_t i)
 {
         void *e;
         uint64_t p;
@@ -87,7 +87,7 @@ static inline void pqueue_shift_up (struct clew_pqueue_head *head, uint64_t i)
         head->setpos(head->entries[i], i);
 }
 
-static inline void pqueue_shift_down (struct clew_pqueue_head *head, uint64_t i)
+static inline void pqueue_shift_down (struct clew_pqueue *head, uint64_t i)
 {
         void *e;
         uint64_t c;
@@ -112,7 +112,7 @@ static inline void pqueue_shift_down (struct clew_pqueue_head *head, uint64_t i)
         head->setpos(e, i);
 }
 
-int clew_pqueue_add (struct clew_pqueue_head *head, void *entry)
+int clew_pqueue_add (struct clew_pqueue *head, void *entry)
 {
         uint64_t i;
         if (head->count + 1 >= head->size) {
@@ -141,7 +141,7 @@ int clew_pqueue_add (struct clew_pqueue_head *head, void *entry)
 bail:   return -1;
 }
 
-int clew_pqueue_mod (struct clew_pqueue_head *head, void *entry, int compare)
+int clew_pqueue_mod (struct clew_pqueue *head, void *entry, int compare)
 {
         uint64_t i;
         i = head->getpos(entry);
@@ -153,7 +153,7 @@ int clew_pqueue_mod (struct clew_pqueue_head *head, void *entry, int compare)
         return 0;
 }
 
-int clew_pqueue_del (struct clew_pqueue_head *head, void *entry)
+int clew_pqueue_del (struct clew_pqueue *head, void *entry)
 {
         uint64_t i;
         i = head->getpos(entry);
@@ -171,7 +171,7 @@ int clew_pqueue_del (struct clew_pqueue_head *head, void *entry)
 bail:   return -1;
 }
 
-void * clew_pqueue_peek (struct clew_pqueue_head *head)
+void * clew_pqueue_peek (struct clew_pqueue *head)
 {
         void *e;
         if (head->count == 1) {
@@ -181,7 +181,7 @@ void * clew_pqueue_peek (struct clew_pqueue_head *head)
         return e;
 }
 
-void * clew_pqueue_pop (struct clew_pqueue_head *head)
+void * clew_pqueue_pop (struct clew_pqueue *head)
 {
         void *e;
         if (head->count == 1) {
@@ -194,7 +194,7 @@ void * clew_pqueue_pop (struct clew_pqueue_head *head)
         return e;
 }
 
-static int pqueue_search_actual (struct clew_pqueue_head *head, void *key, int (*callback) (void *context, void *entry), void *context, uint64_t pos)
+static int pqueue_search_actual (struct clew_pqueue *head, void *key, int (*callback) (void *context, void *entry), void *context, uint64_t pos)
 {
         int rc;
         if (pqueue_left(pos) < head->count) {
@@ -224,7 +224,7 @@ static int pqueue_search_actual (struct clew_pqueue_head *head, void *key, int (
         return 0;
 }
 
-int clew_pqueue_search (struct clew_pqueue_head *head, void *key, int (*callback) (void *context, void *entry), void *context)
+int clew_pqueue_search (struct clew_pqueue *head, void *key, int (*callback) (void *context, void *entry), void *context)
 {
         int rc;
         if (1 < head->count) {
@@ -242,7 +242,7 @@ int clew_pqueue_search (struct clew_pqueue_head *head, void *key, int (*callback
         return 0;
 }
 
-static int pqueue_traverse_actual (struct clew_pqueue_head *head, int (*callback) (void *context, void *entry), void *context, uint64_t pos)
+static int pqueue_traverse_actual (struct clew_pqueue *head, int (*callback) (void *context, void *entry), void *context, uint64_t pos)
 {
         int rc;
         if (pqueue_left(pos) < head->count) {
@@ -268,7 +268,7 @@ static int pqueue_traverse_actual (struct clew_pqueue_head *head, int (*callback
         return 0;
 }
 
-int clew_pqueue_traverse (struct clew_pqueue_head *head, int (*callback) (void *context, void *entry), void *context)
+int clew_pqueue_traverse (struct clew_pqueue *head, int (*callback) (void *context, void *entry), void *context)
 {
         int rc;
         if (1 < head->count) {
@@ -284,7 +284,7 @@ int clew_pqueue_traverse (struct clew_pqueue_head *head, int (*callback) (void *
         return 0;
 }
 
-static int pqueue_is_valid_actual (struct clew_pqueue_head *head, uint64_t pos)
+static int pqueue_is_valid_actual (struct clew_pqueue *head, uint64_t pos)
 {
         if (pqueue_left(pos) < head->count) {
                 if (head->compare(head->entries[pos], head->entries[pqueue_left(pos)]) > 0) {
@@ -305,7 +305,7 @@ static int pqueue_is_valid_actual (struct clew_pqueue_head *head, uint64_t pos)
         return 1;
 }
 
-int clew_pqueue_verify (struct clew_pqueue_head *head)
+int clew_pqueue_verify (struct clew_pqueue *head)
 {
         return pqueue_is_valid_actual(head, 1);
 }

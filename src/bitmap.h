@@ -100,7 +100,7 @@ static inline void clew_bitmap_reset (struct clew_bitmap *bitmap)
 static inline int clew_bitmap_mark (struct clew_bitmap *bitmap, uint64_t at)
 {
         int rc;
-        rc = clew_bitmap_reserve(bitmap, at);
+        rc = clew_bitmap_reserve(bitmap, at + 1);
         if (unlikely(rc != 0)) {
                 return -1;
         }
