@@ -153,9 +153,9 @@ static void print_help (const char *pname)
 	fprintf(stdout, "\n");
 	fprintf(stdout, "  --input              / -i : input path\n");
 	fprintf(stdout, "  --output             / -o: output path\n");
-	fprintf(stdout, "  --clip-path          / -c: clip path, ex: lon1,lat1 lon2,lat2 ... (default: \"\")\n");
+	fprintf(stdout, "  --clip-path              : clip path, ex: lon1,lat1 lon2,lat2 ... (default: \"\")\n");
 	fprintf(stdout, "  --clip-bound             : clip bound, ex: minlon,minlat,maxlon,maxlat (default: \"\")\n");
-	fprintf(stdout, "  --clip-offset            : clip offset in meters (default: 0)\n");
+	fprintf(stdout, "  --clip-offset        / -c: clip offset in meters (default: 0)\n");
 	fprintf(stdout, "  --filter             / -f: filter expression (default: \"\")\n");
 	fprintf(stdout, "  --points             / -p: points to visit, ex: lon1,lat1 lon2,lat2 ... (default: \"\")\n");
 	fprintf(stdout, "  --keep-nodes         / -n: filter nodes (default: 0)\n");
@@ -990,16 +990,12 @@ int main (int argc, char *argv[])
         clew->options.drop_relations            = 0;
 
         clew->state             = CLEW_STATE_INITIAL;
-
         clew->read_state        = clew_stack_init(sizeof(uint32_t));
-        clew_stack_push_uint32(&clew->read_state, CLEW_READ_STATE_UNKNOWN);
-
         clew->read_tags         = clew_stack_init(sizeof(uint32_t));
         clew->read_refs         = clew_stack_init(sizeof(uint64_t));
-
-        clew->node_ids          = clew_bitmap_init(8 * 1024  * 1024);
-        clew->way_ids           = clew_bitmap_init(8 * 1024  * 1024);
-        clew->relation_ids      = clew_bitmap_init(8 * 1024 * 1024);
+        clew->node_ids          = clew_bitmap_init(64 * 1024  * 1024);
+        clew->way_ids           = clew_bitmap_init(64 * 1024  * 1024);
+        clew->relation_ids      = clew_bitmap_init(64 * 1024 * 1024);
 
         optind = 1;
         while (1) {
@@ -1369,6 +1365,16 @@ int main (int argc, char *argv[])
         clew_infof("  drop-drop_ways     : %d", clew->options.drop_ways);
         clew_infof("  drop-drop_relations: %d", clew->options.drop_relations);
 
+        clew->state = CLEW_STATE_INITIAL;
+
+        clew_bitmap_reset(&clew->node_ids);
+        clew_bitmap_reset(&clew->way_ids);
+        clew_bitmap_reset(&clew->relation_ids);
+
+        clew_stack_reset(&clew->read_state);
+        clew_stack_reset(&clew->read_refs);
+        clew_stack_push_uint32(&clew->read_state, CLEW_READ_STATE_UNKNOWN);
+
         for (i = 0, il = clew_stack_count(&clew->options.inputs); i < il; i++) {
                 clew_infof("reading input: %s", *(char **) clew_stack_at(&clew->options.inputs, i));
 
@@ -1416,14 +1422,15 @@ int main (int argc, char *argv[])
                         }
                 }
 
-                clew_infof("nodes    : %ld", clew_bitmap_count(&clew->node_ids));
-                clew_infof("ways     : %ld", clew_bitmap_count(&clew->way_ids));
-                clew_infof("relations: %ld", clew_bitmap_count(&clew->relation_ids));
-
                 if (input != NULL) {
                         clew_input_destroy(input);
                 }
         }
+
+        clew_infof("filtering finished");
+        clew_infof("  nodes    : %ld", clew_bitmap_count(&clew->node_ids));
+        clew_infof("  ways     : %ld", clew_bitmap_count(&clew->way_ids));
+        clew_infof("  relations: %ld", clew_bitmap_count(&clew->relation_ids));
 
 out:
         if (clew != NULL) {

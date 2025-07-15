@@ -160,3 +160,100 @@ static inline uint64_t clew_bitmap_count (const struct clew_bitmap *bitmap)
 
         return count;
 }
+
+#if 0
+
+static inline int clew_bitmap_foreach (const struct clew_bitmap *bitmap, int (*callback) (void *context, uint64_t at), void *context)
+{
+        int rc;
+        uint64_t i;
+        uint64_t il;
+
+        uint64_t bitcount;
+        uint64_t byte_index;
+
+        if (unlikely(bitmap == NULL)) {
+                goto bail;
+        }
+        if (unlikely(callback == NULL)) {
+                goto bail;
+        }
+
+        for (i = 0, il = bitmap->avail; i < il; i++) {
+                rc = clew_bitmap_marked(bitmap, i);
+                if (rc == 1) {
+                        rc = callback(context, i);
+                        if (unlikely(rc < 0)) {
+                                clew_errorf("bitmap logic error");
+                                goto bail;
+                        } else if (rc == 1) {
+                                break;
+                        }
+                } else if (unlikely(rc < 0)) {
+                        clew_errorf("bitmap logic error");
+                        goto bail;
+                }
+        }
+
+        return 0;
+bail:   return -1;
+}
+
+#else
+
+static inline int clew_bitmap_foreach(const struct clew_bitmap *bitmap, int (*callback)(void *context, uint64_t at), void *context)
+{
+        static const uint8_t ctz[256] = {
+                8, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                6, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                7, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                6, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0
+        };
+
+        if (unlikely(bitmap == NULL)) {
+                goto bail;
+        }
+        if (unlikely(callback == NULL)) {
+                goto bail;
+        }
+
+        uint64_t bytes = (bitmap->avail + 7) / 8;
+        for (uint64_t i = 0; i < bytes; ++i) {
+                uint8_t byte = bitmap->buffer[i];
+
+                if (i == bytes - 1 && (bitmap->avail % 8)) {
+                        byte &= (1U << (bitmap->avail % 8)) - 1;
+                }
+
+                while (byte) {
+                        int bit = ctz[byte];
+                        uint64_t bit_index = i * 8 + bit;
+
+                        int rc = callback(context, bit_index);
+                        if (unlikely(rc < 0)) {
+                                goto bail;
+                        } else if (rc == 1) {
+                                goto out;
+                        }
+
+                        byte &= byte - 1;
+                }
+        }
+
+out:    return 0;
+bail:   return -1;
+}
+
+#endif

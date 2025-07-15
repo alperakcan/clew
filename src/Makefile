@@ -25,6 +25,7 @@ clew_files-y += \
 	point.c \
 	bitmap.c \
 	stack.c \
+	pqueue.c \
 	expression.c \
 	tag.c \
 	main.c \
