@@ -191,6 +191,33 @@ struct clew {
         uint64_t read_relation_start;
 };
 
+static const char *g_filter_preset_motorcycle_scenic =
+        "( "
+        "highway_primary or highway_primary_link or "
+        "highway_secondary or highway_secondary_link or "
+        "highway_tertiary or highway_tertiary_link or "
+        "highway_unclassified or "
+        "highway_road or "
+        "highway_residential or "
+        "highway_living_street "
+        ") "
+        "and not toll_yes "
+        "and not tunnel_yes";
+
+static const char *g_filter_preset_motorcycle_scenic_plus =
+        "( "
+        "highway_primary or highway_primary_link or "
+        "highway_secondary or highway_secondary_link or "
+        "highway_tertiary or highway_tertiary_link or "
+        "highway_unclassified or "
+        "highway_road or "
+        "highway_residential or "
+        "highway_living_street or "
+        "(( highway_track or highway_path or highway_footway or highway_bridleway or highway_cycleway ) and surface_asphalt )"
+        ") "
+        "and not toll_yes "
+        "and not tunnel_yes";
+
 static int tags_expression_match_has (void *context, uint32_t tag);
 
 static void parse_tag_fix_layer (char *k, char *v);
@@ -298,6 +325,65 @@ static void print_help (const char *pname)
                         "referencing nodes in the region. The ways are reference-complete, and all multipolygon relations referencing nodes in the "
                         "regions or ways that have nodes in the region are reference-complete. Other relations are not.\n");
 	fprintf(stdout, "\n");
+        fprintf(stdout, "filter;\n");
+        fprintf(stdout, "  Logical expression using predefined tags and operators: and, or, not, (, ). The filter applies to each route segment's tags "
+                        "to determine inclusion.\n");
+        fprintf(stdout, "    - Tags follow the format: key_value (e.g., highway_trunk, surface_dirt)\n");
+        fprintf(stdout, "    - Wildcards supported: highway_* matches all highway types\n");
+        fprintf(stdout, "\n");
+        fprintf(stdout, "  Example:\n");
+        fprintf(stdout, "    (highway_trail or highway_track) and not surface_asphalt\n");
+        fprintf(stdout, "\n");
+        fprintf(stdout, "  presets;\n");
+        fprintf(stdout, "    motorcycle-scenic:\n"
+                        "\n"
+                        "      This preset is designed for relaxed motorcycle travel on asphalt roads.\n"
+                        "      It avoids tolls, tunnels, and rough or unpaved paths.\n"
+                        "\n"
+                        "      Allowed road types:\n"
+                        "        - Primary, secondary, tertiary roads\n"
+                        "        - Residential and service roads\n"
+                        "\n"
+                        "      Requirements:\n"
+                        "        - Surface must be asphalt\n"
+                        "\n"
+                        "      Excluded:\n"
+                        "        - Toll roads\n"
+                        "        - Tunnels\n"
+                        "        - Tracks, paths, or trails used for walking, cycling, or offroad use\n"
+                        "\n"
+                        "      Ideal for:\n"
+                        "        - Scenic riding\n"
+                        "        - Visiting villages and cafés\n"
+                        "        - Comfortable road touring with occasional stops\n"
+                        "      filter:\n"
+                        "        %s\n", g_filter_preset_motorcycle_scenic);
+        fprintf(stdout, "\n");
+        fprintf(stdout, "    motorcycle-scenic+:\n"
+                        "\n"
+                        "      This preset is designed for relaxed motorcycle travel on asphalt roads.\n"
+                        "      It avoids tolls, tunnels, and rough or unpaved paths.\n"
+                        "\n"
+                        "      Allowed road types:\n"
+                        "        - Primary, secondary, tertiary roads\n"
+                        "        - Residential and service roads\n"
+                        "        - Tracks and paths\n"
+                        "\n"
+                        "      Requirements:\n"
+                        "        - Surface must be asphalt\n"
+                        "\n"
+                        "      Excluded:\n"
+                        "        - Toll roads\n"
+                        "        - Tunnels\n"
+                        "        - Tracks, paths without asphalt, or trails used for walking, cycling, or offroad use\n"
+                        "\n"
+                        "      Ideal for:\n"
+                        "        - Scenic riding\n"
+                        "        - Visiting villages and cafés\n"
+                        "        - Comfortable road touring with occasional stops\n"
+                        "      filter:\n"
+                        "        %s\n", g_filter_preset_motorcycle_scenic_plus);
+        fprintf(stdout, "\n");
         fprintf(stdout, "highway tags;\n");
 	fprintf(stdout, "\n");
 	fprintf(stdout, "  roads:\n");
@@ -306,7 +392,7 @@ static void print_help (const char *pname)
         fprintf(stdout, "    highway_primary       : The next most important roads in a country's system. (Often link larger towns.)\n");
         fprintf(stdout, "    highway_secondary     : The next most important roads in a country's system. (Often link towns.)\n");
         fprintf(stdout, "    highway_tertiary      : The next most important roads in a country's system. (Often link smaller towns and villages)\n");
-        fprintf(stdout, "    highway_unclassified  : The least important through roads in a country's system – i.e. minor roads of a lower classification than tertiary, but which serve a purpose other than access to properties. (Often link villages and hamlets.)\n");
+        fprintf(stdout, "    highway_unclassified  : The least important through roads in a country's system i.e. minor roads of a lower classification than tertiary, but which serve a purpose other than access to properties. (Often link villages and hamlets.)\n");
         fprintf(stdout, "    highway_residential   : Roads which serve as an access to housing, without function of connecting settlements. Often lined with housing.\n");
 	fprintf(stdout, "\n");
 	fprintf(stdout, "  link roads:\n");
@@ -1797,7 +1883,17 @@ int main (int argc, char *argv[])
                                         clew_errorf("filter already exists");
                                         goto bail;
                                 }
-                                clew->options.filter = clew_expression_create(optarg);
+                                if (strcasecmp(optarg, "motorcycle_scenic") == 0 ||
+                                    strcasecmp(optarg, "motorcycle-scenic") == 0) {
+                                        clew->options.filter = clew_expression_create(g_filter_preset_motorcycle_scenic);
+                                } else if (strcasecmp(optarg, "motorcycle_scenic+") == 0 ||
+                                           strcasecmp(optarg, "motorcycle-scenic+") == 0 ||
+                                           strcasecmp(optarg, "motorcycle_scenic_plus") == 0 ||
+                                           strcasecmp(optarg, "motorcycle-scenic-plus") == 0) {
+                                        clew->options.filter = clew_expression_create(g_filter_preset_motorcycle_scenic_plus);
+                                } else {
+                                        clew->options.filter = clew_expression_create(optarg);
+                                }
                                 if (clew->options.filter == NULL) {
                                         clew_errorf("can not create expression: %s", optarg);
                                         goto bail;
