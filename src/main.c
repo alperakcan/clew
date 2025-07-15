@@ -1715,16 +1715,43 @@ static int input_callback_extract_error (struct clew_input *input, void *context
         return 0;
 }
 
+static int node_stack_compare_elements (const void *a, const void *b)
+{
+        const struct clew_node *t1 = *(const struct clew_node * const *)a;
+        const struct clew_node *t2 = *(const struct clew_node * const *)b;
+        if (t1->id < t2->id) return -1;
+        if (t1->id > t2->id) return 1;
+        return 0;
+}
+
 static void node_stack_destroy_element (void *context, void *elem)
 {
         (void) context;
         clew_node_destroy(*(struct clew_node **) elem);
 }
 
+static int way_stack_compare_elements (const void *a, const void *b)
+{
+        const struct clew_way *t1 = *(const struct clew_way * const *)a;
+        const struct clew_way *t2 = *(const struct clew_way * const *)b;
+        if (t1->id < t2->id) return -1;
+        if (t1->id > t2->id) return 1;
+        return 0;
+}
+
 static void way_stack_destroy_element (void *context, void *elem)
 {
         (void) context;
         clew_way_destroy(*(struct clew_way **) elem);
+}
+
+static int relation_stack_compare_elements (const void *a, const void *b)
+{
+        const struct clew_relation *t1 = *(const struct clew_relation * const *)a;
+        const struct clew_relation *t2 = *(const struct clew_relation * const *)b;
+        if (t1->id < t2->id) return -1;
+        if (t1->id > t2->id) return 1;
+        return 0;
 }
 
 static void relation_stack_destroy_element (void *context, void *elem)
@@ -2377,12 +2404,15 @@ int main (int argc, char *argv[])
         clew_infof("    ways     : %ld", clew->read_way_start);
         clew_infof("    relations: %ld", clew->read_relation_start);
 
+        clew_infof("  sorting");
+        clew_stack_sort(&clew->nodes, node_stack_compare_elements);
+        clew_stack_sort(&clew->ways, way_stack_compare_elements);
+        clew_stack_sort(&clew->relations, relation_stack_compare_elements);
+
         clew_infof("  extracted");
         clew_infof("    nodes    : %ld", clew_bitmap_count(&clew->node_ids));
         clew_infof("    ways     : %ld", clew_bitmap_count(&clew->way_ids));
         clew_infof("    relations: %ld", clew_bitmap_count(&clew->relation_ids));
-
-        clew_node_destroy(NULL);
 
 out:
         if (clew != NULL) {
