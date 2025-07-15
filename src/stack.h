@@ -3,8 +3,10 @@
 #include <stdint.h>
 #include <string.h>
 
-#define likely(x)       __builtin_expect(!!(x), 1)
-#define unlikely(x)     __builtin_expect(!!(x), 0)
+#define likely(x)               __builtin_expect(!!(x), 1)
+#define unlikely(x)             __builtin_expect(!!(x), 0)
+
+#define CLEW_STACK_GROW_DEFAULT 4096
 
 struct clew_stack {
         uint64_t size;
@@ -13,33 +15,37 @@ struct clew_stack {
         uint64_t count;
         uint64_t avail;
         uint8_t *buffer;
+
+        void (*destroy) (void *context, void *elem);
+        void *context;
 };
 
-static inline struct clew_stack clew_stack_init2 (uint64_t size, uint64_t grow) {
+static inline struct clew_stack clew_stack_init4 (uint64_t size, uint64_t grow, void (*destroy) (void *context, void *elem), void *context)
+{
         return (struct clew_stack) {
-                .size = size,
-                .grow = grow,
-                .count = 0,
-                .avail = 0,
-                .buffer = NULL
+                .size           = size,
+                .grow           = grow,
+                .count          = 0,
+                .avail          = 0,
+                .buffer         = NULL,
+                .destroy        = destroy,
+                .context        = context
         };
 }
 
-static inline struct clew_stack clew_stack_init (uint64_t size) {
-        return clew_stack_init2(size, 4096);
+static inline struct clew_stack clew_stack_init3 (uint64_t size, void (*destroy) (void *context, void *elem), void *context)
+{
+        return clew_stack_init4(size, CLEW_STACK_GROW_DEFAULT, destroy, context);
 }
 
-static inline void clew_stack_uninit (struct clew_stack *stack)
+static inline struct clew_stack clew_stack_init2 (uint64_t size, uint64_t grow)
 {
-        if (stack == NULL) {
-                return;
-        }
-        if (stack->buffer != NULL) {
-                free(stack->buffer);
-        }
-        stack->buffer = NULL;
-        stack->count  = 0;
-        stack->avail  = 0;
+        return clew_stack_init4(size, grow, NULL, NULL);
+}
+
+static inline struct clew_stack clew_stack_init (uint64_t size)
+{
+        return clew_stack_init4(size, CLEW_STACK_GROW_DEFAULT, NULL, NULL);
 }
 
 static inline uint64_t clew_stack_calculate_resize (uint64_t current, uint64_t request, uint64_t grow)
@@ -251,7 +257,37 @@ static inline void * clew_stack_search (const struct clew_stack *stack, const vo
         }
 }
 
+static inline void clew_stack_uninit (struct clew_stack *stack)
+{
+        if (stack == NULL) {
+                return;
+        }
+        if (stack->destroy != NULL) {
+                uint64_t i;
+                uint64_t il;
+                for (i = 0, il = clew_stack_count(stack); i < il; i++) {
+                        stack->destroy(stack->context, clew_stack_at(stack, i));
+                }
+        }
+        if (stack->buffer != NULL) {
+                free(stack->buffer);
+        }
+        stack->buffer = NULL;
+        stack->count  = 0;
+        stack->avail  = 0;
+}
+
 #define CLEW_STACK_API_FOR_TYPE(name, type) \
+        static inline struct clew_stack clew_stack_init_ ## name (void)                                         \
+        {                                                                                                       \
+                return clew_stack_init(sizeof(type));                                                           \
+        }                                                                                                       \
+                                                                                                                \
+        static inline struct clew_stack clew_stack_init2_ ## name (uint64_t grow)                               \
+        {                                                                                                       \
+                return clew_stack_init2(sizeof(type), grow);                                                    \
+        }                                                                                                       \
+                                                                                                                \
         static inline int clew_stack_compare_ ## name (const void *a, const void *b)                            \
         {                                                                                                       \
                 const type *t1 = (const type *) a;                                                              \
@@ -309,3 +345,4 @@ CLEW_STACK_API_FOR_TYPE(int32, int32_t)
 CLEW_STACK_API_FOR_TYPE(int64, int64_t)
 CLEW_STACK_API_FOR_TYPE(uint32, uint32_t)
 CLEW_STACK_API_FOR_TYPE(uint64, uint64_t)
+CLEW_STACK_API_FOR_TYPE(ptr, void *)

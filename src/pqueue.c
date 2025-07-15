@@ -16,19 +16,19 @@
 
 struct clew_pqueue_head {
         void **entries;
-        unsigned int count;
-        unsigned int size;
-        unsigned int step;
+        uint64_t count;
+        uint64_t size;
+        uint64_t step;
         int (*compare) (void *a, void *b);
-        void (*setpos) (void *entry, unsigned int position);
-        unsigned int (*getpos) (void *entry);
+        void (*setpos) (void *entry, uint64_t position);
+        uint64_t (*getpos) (void *entry);
 };
 
 struct clew_pqueue_head * clew_pqueue_create (
-        unsigned int size, unsigned int step,
+        uint64_t size, uint64_t step,
         int (*compare) (void *a, void *b),
-        void (*setpos) (void *entry, unsigned int position),
-        unsigned int (*getpos) (void *entry))
+        void (*setpos) (void *entry, uint64_t position),
+        uint64_t (*getpos) (void *entry))
 {
         struct clew_pqueue_head *head;
         head = malloc(sizeof(struct clew_pqueue_head));
@@ -66,15 +66,15 @@ void clew_pqueue_destroy (struct clew_pqueue_head *head)
         free(head);
 }
 
-unsigned int clew_pqueue_count (struct clew_pqueue_head *head)
+uint64_t clew_pqueue_count (struct clew_pqueue_head *head)
 {
         return head->count -1;
 }
 
-static inline void pqueue_shift_up (struct clew_pqueue_head *head, unsigned int i)
+static inline void pqueue_shift_up (struct clew_pqueue_head *head, uint64_t i)
 {
         void *e;
-        unsigned int p;
+        uint64_t p;
         e = head->entries[i];
         p = pqueue_parent(i);
         while ((i > 1) && (head->compare(head->entries[p], e) > 0)) {
@@ -87,10 +87,10 @@ static inline void pqueue_shift_up (struct clew_pqueue_head *head, unsigned int 
         head->setpos(head->entries[i], i);
 }
 
-static inline void pqueue_shift_down (struct clew_pqueue_head *head, unsigned int i)
+static inline void pqueue_shift_down (struct clew_pqueue_head *head, uint64_t i)
 {
         void *e;
-        unsigned int c;
+        uint64_t c;
         e = head->entries[i];
         while (1) {
                 c = pqueue_left(i);
@@ -114,10 +114,10 @@ static inline void pqueue_shift_down (struct clew_pqueue_head *head, unsigned in
 
 int clew_pqueue_add (struct clew_pqueue_head *head, void *entry)
 {
-        unsigned int i;
+        uint64_t i;
         if (head->count + 1 >= head->size) {
                 void **tmp;
-                unsigned int size;
+                uint64_t size;
                 size = MAX(head->count + 1, head->size + head->step);
                 tmp = (void **) realloc(head->entries, sizeof(void **) * size);
                 if (tmp == NULL) {
@@ -143,7 +143,7 @@ bail:   return -1;
 
 int clew_pqueue_mod (struct clew_pqueue_head *head, void *entry, int compare)
 {
-        unsigned int i;
+        uint64_t i;
         i = head->getpos(entry);
         if (compare > 0) {
                 pqueue_shift_up(head, i);
@@ -155,9 +155,9 @@ int clew_pqueue_mod (struct clew_pqueue_head *head, void *entry, int compare)
 
 int clew_pqueue_del (struct clew_pqueue_head *head, void *entry)
 {
-        unsigned int i;
+        uint64_t i;
         i = head->getpos(entry);
-        if (i == (unsigned int) -1) {
+        if (i == (uint64_t) -1) {
                 goto bail;
         }
         head->entries[i] = head->entries[--head->count];
@@ -194,7 +194,7 @@ void * clew_pqueue_pop (struct clew_pqueue_head *head)
         return e;
 }
 
-static int pqueue_search_actual (struct clew_pqueue_head *head, void *key, int (*callback) (void *context, void *entry), void *context, unsigned int pos)
+static int pqueue_search_actual (struct clew_pqueue_head *head, void *key, int (*callback) (void *context, void *entry), void *context, uint64_t pos)
 {
         int rc;
         if (pqueue_left(pos) < head->count) {
@@ -242,7 +242,7 @@ int clew_pqueue_search (struct clew_pqueue_head *head, void *key, int (*callback
         return 0;
 }
 
-static int pqueue_traverse_actual (struct clew_pqueue_head *head, int (*callback) (void *context, void *entry), void *context, unsigned int pos)
+static int pqueue_traverse_actual (struct clew_pqueue_head *head, int (*callback) (void *context, void *entry), void *context, uint64_t pos)
 {
         int rc;
         if (pqueue_left(pos) < head->count) {
@@ -284,7 +284,7 @@ int clew_pqueue_traverse (struct clew_pqueue_head *head, int (*callback) (void *
         return 0;
 }
 
-static int pqueue_is_valid_actual (struct clew_pqueue_head *head, unsigned int pos)
+static int pqueue_is_valid_actual (struct clew_pqueue_head *head, uint64_t pos)
 {
         if (pqueue_left(pos) < head->count) {
                 if (head->compare(head->entries[pos], head->entries[pqueue_left(pos)]) > 0) {

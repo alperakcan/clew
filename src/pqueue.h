@@ -1,14 +1,16 @@
 
+#include <stdint.h>
+
 struct clew_pqueue_head;
 
 struct clew_pqueue_head * clew_pqueue_create (
-        unsigned int size, unsigned int step,
+        uint64_t size, uint64_t step,
         int (*compare) (void *a, void *b),
-        void (*setpos) (void *entry, unsigned int position),
-        unsigned int (*getpos) (void *entry));
+        void (*setpos) (void *entry, uint64_t position),
+        uint64_t (*getpos) (void *entry));
 void clew_pqueue_destroy (struct clew_pqueue_head *head);
 
-unsigned int clew_pqueue_count (struct clew_pqueue_head *head);
+uint64_t clew_pqueue_count (struct clew_pqueue_head *head);
 
 int clew_pqueue_add (struct clew_pqueue_head *head, void *entry);
 int clew_pqueue_mod (struct clew_pqueue_head *head, void *entry, int compare);
