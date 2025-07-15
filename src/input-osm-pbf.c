@@ -370,6 +370,8 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                                         clew_errorf("input callback_tag_start failed");
                                                                         osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                         goto bail;
+                                                                } else if (rc == 1) {
+                                                                        goto skip_node_tag;
                                                                 }
                                                         }
                                                         if (input->callback_k) {
@@ -388,6 +390,7 @@ static int clew_input_osm_pbf_read (struct clew_input_backend *backend)
                                                                         goto bail;
                                                                 }
                                                         }
+skip_node_tag:
                                                         if (input->callback_tag_end) {
                                                                 rc = input->callback_tag_end(&input->backend, input->callback_context);
                                                                 if (rc < 0) {
@@ -467,6 +470,8 @@ skip_node:
                                                                 clew_errorf("input callback_tag_start failed");
                                                                 osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                 goto bail;
+                                                        } else if (rc == 1) {
+                                                                goto skip_way_tag;
                                                         }
                                                 }
                                                 if (input->callback_k) {
@@ -485,6 +490,7 @@ skip_node:
                                                                 goto bail;
                                                         }
                                                 }
+skip_way_tag:
                                                 if (input->callback_tag_end) {
                                                         rc = input->callback_tag_end(&input->backend, input->callback_context);
                                                         if (rc < 0) {
@@ -578,6 +584,8 @@ skip_way:
                                                                 clew_errorf("input callback_tag_start failed");
                                                                 osmpbf__primitive_block__free_unpacked(primitive_block, NULL);
                                                                 goto bail;
+                                                        } else if (rc == 1) {
+                                                                goto skip_relation_tag;
                                                         }
                                                 }
                                                 if (input->callback_k) {
@@ -596,6 +604,7 @@ skip_way:
                                                                 goto bail;
                                                         }
                                                 }
+skip_relation_tag:
                                                 if (input->callback_tag_end) {
                                                         rc = input->callback_tag_end(&input->backend, input->callback_context);
                                                         if (rc < 0) {

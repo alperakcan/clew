@@ -137,12 +137,23 @@ struct clew_node {
         uint64_t id;
         int32_t lon;
         int32_t lat;
+        uint32_t ntags;
         uint32_t *tags;
 };
 
 struct clew_way {
         uint64_t id;
+        uint32_t ntags;
         uint32_t *tags;
+        uint32_t nrefs;
+        uint64_t *refs;
+};
+
+struct clew_relation {
+        uint64_t id;
+        uint32_t ntags;
+        uint32_t *tags;
+        uint32_t nrefs;
         uint64_t *refs;
 };
 
@@ -242,6 +253,8 @@ static int input_callback_extract_v (struct clew_input *input, void *context, co
 static int input_callback_extract_error (struct clew_input *input, void *context, unsigned int reason);
 
 static void clew_node_destroy (struct clew_node *node);
+static void clew_way_destroy (struct clew_way *way);
+static void clew_relation_destroy (struct clew_relation *relation);
 
 static const char * clew_clip_strategy_string (int strategy);
 static int clew_clip_strategy_value (const char *strategy);
@@ -1048,10 +1061,21 @@ static int input_callback_extract_node_end (struct clew_input *input, void *cont
                 goto bail;
         }
         memset(node, 0, sizeof(struct clew_node));
-        node->id   = clew->read_id;
-        node->lon  = clew->read_lon;
-        node->lat  = clew->read_lat;
-        node->tags = NULL;
+
+        node->id  = clew->read_id;
+        node->lon = clew->read_lon;
+        node->lat = clew->read_lat;
+
+        node->ntags = clew_stack_count(&clew->read_tags);
+        if (node->ntags > 0) {
+                node->tags  = malloc(sizeof(uint32_t) * node->ntags);
+                if (node->tags == NULL) {
+                        clew_errorf("can not allocate memory");
+                        goto bail;
+                }
+                memcpy(node->tags, clew_stack_buffer(&clew->read_tags), sizeof(uint32_t) * node->ntags);
+        }
+
         rc = clew_stack_push_ptr(&clew->nodes, node);
         if (rc < 0) {
                 clew_errorf("can not push node");
@@ -1083,27 +1107,20 @@ static int input_callback_extract_way_start (struct clew_input *input, void *con
         clew_stack_reset(&clew->read_tags);
         clew_stack_reset(&clew->read_refs);
 
-        if (clew->options.keep_ways == 0) {
-                goto skip;
-        }
-
         return 0;
-skip:   return 1;
 bail:   return -1;
 }
 
 static int input_callback_extract_way_end (struct clew_input *input, void *context)
 {
         int rc;
-        int match;
-
-        uint64_t i;
-        uint64_t il;
-        uint64_t ref;
+        struct clew_way *way;
 
         struct clew *clew = context;
 
         (void) input;
+
+        way = NULL;
 
         if (clew_stack_peek_uint32(&clew->read_state) != CLEW_READ_STATE_WAY) {
                 clew_errorf("read_state is invalid, %d != %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_WAY);
@@ -1111,32 +1128,54 @@ static int input_callback_extract_way_end (struct clew_input *input, void *conte
         }
         clew_stack_pop(&clew->read_state);
 
-        match = 0;
-        if (clew_stack_count(&clew->read_tags) > 0) {
-                clew_stack_sort_uint32(&clew->read_tags);
-                match = clew_expression_match(clew->options.filter, &clew->read_tags, NULL, NULL, NULL, tags_expression_match_has);
-        }
-        if (match == 0) {
+        rc = clew_bitmap_marked(&clew->way_ids, clew->read_id);
+        if (rc < 0) {
+                clew_errorf("can not read bitmap");
+                goto bail;
+        } else if (rc == 0) {
                 goto out;
         }
 
-        rc = clew_bitmap_mark(&clew->way_ids, clew->read_id);
+        way = malloc(sizeof(struct clew_way));
+        if (way == NULL) {
+                clew_errorf("can not allocate memory");
+                goto bail;
+        }
+        memset(way, 0, sizeof(struct clew_way));
+
+        way->id = clew->read_id;
+
+        way->ntags = clew_stack_count(&clew->read_tags);
+        if (way->ntags > 0) {
+                way->tags  = malloc(sizeof(uint32_t) * way->ntags);
+                if (way->tags == NULL) {
+                        clew_errorf("can not allocate memory");
+                        goto bail;
+                }
+                memcpy(way->tags, clew_stack_buffer(&clew->read_tags), sizeof(uint32_t) * way->ntags);
+        }
+
+        way->nrefs = clew_stack_count(&clew->read_refs);
+        if (way->nrefs > 0) {
+                way->refs  = malloc(sizeof(uint32_t) * way->nrefs);
+                if (way->refs == NULL) {
+                        clew_errorf("can not allocate memory");
+                        goto bail;
+                }
+                memcpy(way->refs, clew_stack_buffer(&clew->read_refs), sizeof(uint32_t) * way->nrefs);
+        }
+
+        rc = clew_stack_push_ptr(&clew->ways, way);
         if (rc < 0) {
-                clew_errorf("can not push way id");
+                clew_errorf("can not push way");
                 goto bail;
         }
 
-        for (i = 0, il = clew_stack_count(&clew->read_refs); i < il; i++) {
-                ref = clew_stack_at_uint64(&clew->read_refs, i);
-                rc = clew_bitmap_mark(&clew->node_ids, ref);
-                if (rc < 0) {
-                        clew_errorf("can not push node id");
-                        goto bail;
-                }
-        }
-
 out:    return 0;
-bail:   return -1;
+bail:   if (way != NULL) {
+                clew_way_destroy(way);
+        }
+        return -1;
 }
 
 static int input_callback_extract_relation_start (struct clew_input *input, void *context)
@@ -1221,7 +1260,26 @@ static int input_callback_extract_tag_start (struct clew_input *input, void *con
         clew->read_tag_k[0] = '\0';
         clew->read_tag_v[0] = '\0';
 
+        switch (clew_stack_peek_uint32(&clew->read_state)) {
+                case CLEW_READ_STATE_NODE:
+                        if (clew->options.keep_nodes == 0) {
+                                goto skip;
+                        }
+                        break;
+                case CLEW_READ_STATE_WAY:
+                        if (clew->options.keep_nodes == 0) {
+                                goto skip;
+                        }
+                        break;
+                case CLEW_READ_STATE_RELATION:
+                        if (clew->options.keep_nodes == 0) {
+                                goto skip;
+                        }
+                        break;
+        }
+
         return 0;
+skip:   return 1;
 bail:   return -1;
 }
 
@@ -1577,6 +1635,18 @@ static void node_stack_destroy_element (void *context, void *elem)
         clew_node_destroy(*(struct clew_node **) elem);
 }
 
+static void way_stack_destroy_element (void *context, void *elem)
+{
+        (void) context;
+        clew_way_destroy(*(struct clew_way **) elem);
+}
+
+static void relation_stack_destroy_element (void *context, void *elem)
+{
+        (void) context;
+        clew_relation_destroy(*(struct clew_relation **) elem);
+}
+
 static void clew_node_destroy (struct clew_node *node)
 {
         if (node == NULL) {
@@ -1586,6 +1656,34 @@ static void clew_node_destroy (struct clew_node *node)
                 free(node->tags);
         }
         free(node);
+}
+
+static void clew_way_destroy (struct clew_way *way)
+{
+        if (way == NULL) {
+                return;
+        }
+        if (way->tags != NULL) {
+                free(way->tags);
+        }
+        if (way->refs != NULL) {
+                free(way->refs);
+        }
+        free(way);
+}
+
+static void clew_relation_destroy (struct clew_relation *relation)
+{
+        if (relation == NULL) {
+                return;
+        }
+        if (relation->tags != NULL) {
+                free(relation->tags);
+        }
+        if (relation->refs != NULL) {
+                free(relation->refs);
+        }
+        free(relation);
 }
 
 static const char * clew_clip_strategy_string (int strategy)
@@ -1661,8 +1759,8 @@ int main (int argc, char *argv[])
         clew->way_ids           = clew_bitmap_init(64 * 1024  * 1024);
         clew->relation_ids      = clew_bitmap_init(64 * 1024 * 1024);
         clew->nodes             = clew_stack_init4(sizeof(struct clew_node *), 64 * 1024, node_stack_destroy_element, NULL);
-        clew->ways              = clew_stack_init2_ptr(64 * 1024);
-        clew->relations         = clew_stack_init2_ptr(64 * 1024);
+        clew->ways              = clew_stack_init4(sizeof(struct clew_way *), 64 * 1024, way_stack_destroy_element, NULL);
+        clew->relations         = clew_stack_init4(sizeof(struct clew_relation *), 64 * 1024, relation_stack_destroy_element, NULL);
 
         optind = 1;
         while (1) {

@@ -96,6 +96,11 @@ static inline void clew_stack_reset (struct clew_stack *stack)
         stack->count = 0;
 }
 
+static inline uint8_t * clew_stack_buffer (const struct clew_stack *stack)
+{
+        return stack->buffer;
+}
+
 static inline uint64_t clew_stack_count (const struct clew_stack *stack)
 {
         return stack->count;
