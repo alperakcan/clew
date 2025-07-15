@@ -75,35 +75,47 @@ static struct option g_long_options[] = {
 };
 
 enum {
-        CLEW_STATE_INITIAL              = 0,
-        CLEW_STATE_EXTRACT              = 1,
-#define CLEW_STATE_INITIAL              CLEW_STATE_INITIAL
-#define CLEW_STATE_EXTRACT              CLEW_STATE_EXTRACT
+        CLEW_STATE_INITIAL                      = 0,
+        CLEW_STATE_EXTRACT                      = 1,
+#define CLEW_STATE_INITIAL                      CLEW_STATE_INITIAL
+#define CLEW_STATE_EXTRACT                      CLEW_STATE_EXTRACT
 };
 
 enum {
-        CLEW_READ_STATE_UNKNOWN         = 0,
-        CLEW_READ_STATE_BOUNDS          = 1,
-        CLEW_READ_STATE_NODE            = 2,
-        CLEW_READ_STATE_WAY             = 3,
-        CLEW_READ_STATE_RELATION        = 4,
-        CLEW_READ_STATE_TAG             = 5,
-        CLEW_READ_STATE_ND              = 6,
-        CLEW_READ_STATE_MEMBER          = 7
-#define CLEW_READ_STATE_UNKNOWN         CLEW_READ_STATE_UNKNOWN
-#define CLEW_READ_STATE_BOUNDS          CLEW_READ_STATE_BOUNDS
-#define CLEW_READ_STATE_NODE            CLEW_READ_STATE_NODE
-#define CLEW_READ_STATE_WAY             CLEW_READ_STATE_WAY
-#define CLEW_READ_STATE_RELATION        CLEW_READ_STATE_RELATION
-#define CLEW_READ_STATE_TAG             CLEW_READ_STATE_TAG
-#define CLEW_READ_STATE_ND              CLEW_READ_STATE_ND
-#define CLEW_READ_STATE_MEMBER          CLEW_READ_STATE_MEMBER
+        CLEW_CLIP_STRATEGY_UNKNOWN              = 0,
+        CLEW_CLIP_STRATEGY_SIMPLE               = 1,
+        CLEW_CLIP_STRATEGY_COMPLETE_WAYS        = 2,
+        CLEW_CLIP_STRATEGY_SMART                = 3
+#define CLEW_CLIP_STRATEGY_UNKNOWN              CLEW_CLIP_STRATEGY_UNKNOWN
+#define CLEW_CLIP_STRATEGY_SIMPLE               CLEW_CLIP_STRATEGY_SIMPLE
+#define CLEW_CLIP_STRATEGY_COMPLETE_WAYS        CLEW_CLIP_STRATEGY_COMPLETE_WAYS
+#define CLEW_CLIP_STRATEGY_SMART                CLEW_CLIP_STRATEGY_SMART
+};
+
+enum {
+        CLEW_READ_STATE_UNKNOWN                 = 0,
+        CLEW_READ_STATE_BOUNDS                  = 1,
+        CLEW_READ_STATE_NODE                    = 2,
+        CLEW_READ_STATE_WAY                     = 3,
+        CLEW_READ_STATE_RELATION                = 4,
+        CLEW_READ_STATE_TAG                     = 5,
+        CLEW_READ_STATE_ND                      = 6,
+        CLEW_READ_STATE_MEMBER                  = 7
+#define CLEW_READ_STATE_UNKNOWN                 CLEW_READ_STATE_UNKNOWN
+#define CLEW_READ_STATE_BOUNDS                  CLEW_READ_STATE_BOUNDS
+#define CLEW_READ_STATE_NODE                    CLEW_READ_STATE_NODE
+#define CLEW_READ_STATE_WAY                     CLEW_READ_STATE_WAY
+#define CLEW_READ_STATE_RELATION                CLEW_READ_STATE_RELATION
+#define CLEW_READ_STATE_TAG                     CLEW_READ_STATE_TAG
+#define CLEW_READ_STATE_ND                      CLEW_READ_STATE_ND
+#define CLEW_READ_STATE_MEMBER                  CLEW_READ_STATE_MEMBER
 };
 
 struct clew_options {
         struct clew_stack inputs;
         const char *output;
         struct clew_stack clip_path;
+        int clip_strategy;
         struct clew_stack points;
         struct clew_expression *filter;
         struct clew_expression *keep_tags;
@@ -150,6 +162,43 @@ struct clew {
         uint64_t read_way_start;
         uint64_t read_relation_start;
 };
+
+static int tag_expression_match_has (void *context, uint32_t tag);
+static int tags_expression_match_has (void *context, uint32_t tag);
+
+static void parse_tag_fix_layer (char *k, char *v);
+static void parse_tag_fix (char *k, char *v);
+
+static int input_callback_extract_bounds_start (struct clew_input *input, void *context);
+static int input_callback_extract_bounds_end (struct clew_input *input, void *context);
+static int input_callback_extract_node_start (struct clew_input *input, void *context);
+static int input_callback_extract_node_end (struct clew_input *input, void *context);
+static int input_callback_extract_way_start (struct clew_input *input, void *context);
+static int input_callback_extract_way_end (struct clew_input *input, void *context);
+static int input_callback_extract_relation_start (struct clew_input *input, void *context);
+static int input_callback_extract_relation_end (struct clew_input *input, void *context);
+static int input_callback_extract_tag_start (struct clew_input *input, void *context);
+static int input_callback_extract_tag_end (struct clew_input *input, void *context);
+static int input_callback_extract_nd_start (struct clew_input *input, void *context);
+static int input_callback_extract_nd_end (struct clew_input *input, void *context);
+static int input_callback_extract_member_start (struct clew_input *input, void *context);
+static int input_callback_extract_member_end (struct clew_input *input, void *context);
+static int input_callback_extract_minlon (struct clew_input *input, void *context, int32_t lon);
+static int input_callback_extract_minlat (struct clew_input *input, void *context, int32_t lat);
+static int input_callback_extract_maxlon (struct clew_input *input, void *context, int32_t lon);
+static int input_callback_extract_maxlat (struct clew_input *input, void *context, int32_t lat);
+static int input_callback_extract_id (struct clew_input *input, void *context, uint64_t id);
+static int input_callback_extract_lon (struct clew_input *input, void *context, int32_t lon);
+static int input_callback_extract_lat (struct clew_input *input, void *context, int32_t lat);
+static int input_callback_extract_ref (struct clew_input *input, void *context, uint64_t ref);
+static int input_callback_extract_type (struct clew_input *input, void *context, const char *type);
+static int input_callback_extract_role (struct clew_input *input, void *context, const char *role);
+static int input_callback_extract_k (struct clew_input *input, void *context, const char *k);
+static int input_callback_extract_v (struct clew_input *input, void *context, const char *v);
+static int input_callback_extract_error (struct clew_input *input, void *context, unsigned int reason);
+
+static const char * clew_clip_strategy_string (int strategy);
+static int clew_clip_strategy_value (const char *strategy);
 
 static void print_help (const char *pname)
 {
@@ -275,7 +324,7 @@ static void parse_tag_fix (char *k, char *v)
         }
 }
 
-static int input_callback_bounds_start (struct clew_input *input, void *context)
+static int input_callback_extract_bounds_start (struct clew_input *input, void *context)
 {
         struct clew *clew = context;
 
@@ -291,7 +340,7 @@ static int input_callback_bounds_start (struct clew_input *input, void *context)
 bail:   return -1;
 }
 
-static int input_callback_bounds_end (struct clew_input *input, void *context)
+static int input_callback_extract_bounds_end (struct clew_input *input, void *context)
 {
         struct clew *clew = context;
 
@@ -307,7 +356,7 @@ static int input_callback_bounds_end (struct clew_input *input, void *context)
 bail:   return -1;
 }
 
-static int input_callback_node_start (struct clew_input *input, void *context)
+static int input_callback_extract_node_start (struct clew_input *input, void *context)
 {
         struct clew *clew = context;
 
@@ -335,7 +384,7 @@ skip:   return 1;
 bail:   return -1;
 }
 
-static int input_callback_node_end (struct clew_input *input, void *context)
+static int input_callback_extract_node_end (struct clew_input *input, void *context)
 {
         int rc;
         int match;
@@ -368,7 +417,7 @@ out:    return 0;
 bail:   return -1;
 }
 
-static int input_callback_way_start (struct clew_input *input, void *context)
+static int input_callback_extract_way_start (struct clew_input *input, void *context)
 {
         struct clew *clew = context;
 
@@ -392,7 +441,7 @@ static int input_callback_way_start (struct clew_input *input, void *context)
 bail:   return -1;
 }
 
-static int input_callback_way_end (struct clew_input *input, void *context)
+static int input_callback_extract_way_end (struct clew_input *input, void *context)
 {
         int rc;
         int match;
@@ -439,7 +488,7 @@ out:    return 0;
 bail:   return -1;
 }
 
-static int input_callback_relation_start (struct clew_input *input, void *context)
+static int input_callback_extract_relation_start (struct clew_input *input, void *context)
 {
         struct clew *clew = context;
 
@@ -463,7 +512,7 @@ static int input_callback_relation_start (struct clew_input *input, void *contex
 bail:   return -1;
 }
 
-static int input_callback_relation_end (struct clew_input *input, void *context)
+static int input_callback_extract_relation_end (struct clew_input *input, void *context)
 {
         int rc;
         int match;
@@ -496,7 +545,7 @@ out:    return 0;
 bail:   return -1;
 }
 
-static int input_callback_tag_start (struct clew_input *input, void *context)
+static int input_callback_extract_tag_start (struct clew_input *input, void *context)
 {
         struct clew *clew = context;
 
@@ -520,7 +569,7 @@ static int input_callback_tag_start (struct clew_input *input, void *context)
 bail:   return -1;
 }
 
-static int input_callback_tag_end (struct clew_input *input, void *context)
+static int input_callback_extract_tag_end (struct clew_input *input, void *context)
 {
         int rc;
         int kl;
@@ -632,7 +681,7 @@ out:    return 0;
 bail:   return -1;
 }
 
-static int input_callback_nd_start (struct clew_input *input, void *context)
+static int input_callback_extract_nd_start (struct clew_input *input, void *context)
 {
         struct clew *clew = context;
 
@@ -648,7 +697,7 @@ static int input_callback_nd_start (struct clew_input *input, void *context)
 bail:   return -1;
 }
 
-static int input_callback_nd_end (struct clew_input *input, void *context)
+static int input_callback_extract_nd_end (struct clew_input *input, void *context)
 {
         struct clew *clew = context;
 
@@ -664,7 +713,7 @@ static int input_callback_nd_end (struct clew_input *input, void *context)
 bail:   return -1;
 }
 
-static int input_callback_member_start (struct clew_input *input, void *context)
+static int input_callback_extract_member_start (struct clew_input *input, void *context)
 {
         struct clew *clew = context;
 
@@ -680,7 +729,7 @@ static int input_callback_member_start (struct clew_input *input, void *context)
 bail:   return -1;
 }
 
-static int input_callback_member_end (struct clew_input *input, void *context)
+static int input_callback_extract_member_end (struct clew_input *input, void *context)
 {
         struct clew *clew = context;
 
@@ -696,7 +745,7 @@ static int input_callback_member_end (struct clew_input *input, void *context)
 bail:   return -1;
 }
 
-static int input_callback_minlon (struct clew_input *input, void *context, int32_t lon)
+static int input_callback_extract_minlon (struct clew_input *input, void *context, int32_t lon)
 {
         struct clew *clew = context;
 
@@ -712,7 +761,7 @@ static int input_callback_minlon (struct clew_input *input, void *context, int32
 bail:   return -1;
 }
 
-static int input_callback_minlat (struct clew_input *input, void *context, int32_t lat)
+static int input_callback_extract_minlat (struct clew_input *input, void *context, int32_t lat)
 {
         struct clew *clew = context;
 
@@ -728,7 +777,7 @@ static int input_callback_minlat (struct clew_input *input, void *context, int32
 bail:   return -1;
 }
 
-static int input_callback_maxlon (struct clew_input *input, void *context, int32_t lon)
+static int input_callback_extract_maxlon (struct clew_input *input, void *context, int32_t lon)
 {
         struct clew *clew = context;
 
@@ -744,7 +793,7 @@ static int input_callback_maxlon (struct clew_input *input, void *context, int32
 bail:   return -1;
 }
 
-static int input_callback_maxlat (struct clew_input *input, void *context, int32_t lat)
+static int input_callback_extract_maxlat (struct clew_input *input, void *context, int32_t lat)
 {
         struct clew *clew = context;
 
@@ -760,7 +809,7 @@ static int input_callback_maxlat (struct clew_input *input, void *context, int32
 bail:   return -1;
 }
 
-static int input_callback_id (struct clew_input *input, void *context, uint64_t id)
+static int input_callback_extract_id (struct clew_input *input, void *context, uint64_t id)
 {
         struct clew *clew = context;
 
@@ -782,7 +831,7 @@ static int input_callback_id (struct clew_input *input, void *context, uint64_t 
 bail:   return -1;
 }
 
-static int input_callback_lon (struct clew_input *input, void *context, int32_t lon)
+static int input_callback_extract_lon (struct clew_input *input, void *context, int32_t lon)
 {
         struct clew *clew = context;
 
@@ -799,7 +848,7 @@ static int input_callback_lon (struct clew_input *input, void *context, int32_t 
 bail:   return -1;
 }
 
-static int input_callback_lat (struct clew_input *input, void *context, int32_t lat)
+static int input_callback_extract_lat (struct clew_input *input, void *context, int32_t lat)
 {
         struct clew *clew = context;
 
@@ -816,7 +865,7 @@ static int input_callback_lat (struct clew_input *input, void *context, int32_t 
 bail:   return -1;
 }
 
-static int input_callback_ref (struct clew_input *input, void *context, uint64_t ref)
+static int input_callback_extract_ref (struct clew_input *input, void *context, uint64_t ref)
 {
         int rc;
         struct clew *clew = context;
@@ -843,7 +892,7 @@ static int input_callback_ref (struct clew_input *input, void *context, uint64_t
 bail:   return -1;
 }
 
-static int input_callback_type (struct clew_input *input, void *context, const char *type)
+static int input_callback_extract_type (struct clew_input *input, void *context, const char *type)
 {
         struct clew *clew = context;
 
@@ -859,7 +908,7 @@ static int input_callback_type (struct clew_input *input, void *context, const c
 bail:   return -1;
 }
 
-static int input_callback_role (struct clew_input *input, void *context, const char *role)
+static int input_callback_extract_role (struct clew_input *input, void *context, const char *role)
 {
         struct clew *clew = context;
 
@@ -875,7 +924,7 @@ static int input_callback_role (struct clew_input *input, void *context, const c
 bail:   return -1;
 }
 
-static int input_callback_k (struct clew_input *input, void *context, const char *k)
+static int input_callback_extract_k (struct clew_input *input, void *context, const char *k)
 {
         struct clew *clew = context;
 
@@ -913,7 +962,7 @@ out:    return 0;
 bail:   return -1;
 }
 
-static int input_callback_v (struct clew_input *input, void *context, const char *v)
+static int input_callback_extract_v (struct clew_input *input, void *context, const char *v)
 {
         struct clew *clew = context;
 
@@ -951,13 +1000,31 @@ out:    return 0;
 bail:   return -1;
 }
 
-static int input_callback_error (struct clew_input *input, void *context, unsigned int reason)
+static int input_callback_extract_error (struct clew_input *input, void *context, unsigned int reason)
 {
         struct clew *clew = context;
         (void) input;
         (void) clew;
         (void) reason;
         return 0;
+}
+
+static const char * clew_clip_strategy_string (int strategy)
+{
+        if (strategy == CLEW_CLIP_STRATEGY_SIMPLE)              return "simple";
+        if (strategy == CLEW_CLIP_STRATEGY_COMPLETE_WAYS)       return "complete-ways";
+        if (strategy == CLEW_CLIP_STRATEGY_SMART)               return "smart";
+        return "unknown";
+}
+
+static int clew_clip_strategy_value (const char *strategy)
+{
+        if (strategy == NULL)                           return CLEW_CLIP_STRATEGY_UNKNOWN;
+        if (strcasecmp(strategy, "simple") == 0)        return CLEW_CLIP_STRATEGY_SIMPLE;
+        if (strcasecmp(strategy, "complete-ways") == 0) return CLEW_CLIP_STRATEGY_COMPLETE_WAYS;
+        if (strcasecmp(strategy, "complete_ways") == 0) return CLEW_CLIP_STRATEGY_COMPLETE_WAYS;
+        if (strcasecmp(strategy, "smart") == 0)         return CLEW_CLIP_STRATEGY_SMART;
+        return CLEW_CLIP_STRATEGY_UNKNOWN;
 }
 
 int main (int argc, char *argv[])
@@ -992,6 +1059,7 @@ int main (int argc, char *argv[])
         clew->options.inputs                    = clew_stack_init(sizeof(const char *));
         clew->options.output                    = NULL;
         clew->options.clip_path                 = clew_stack_init(sizeof(int32_t));
+        clew->options.clip_strategy             = CLEW_CLIP_STRATEGY_SMART;
         clew->options.filter                    = NULL;
         clew->options.points                    = clew_stack_init(sizeof(int32_t));
         clew->options.keep_tags                 = NULL;
@@ -1339,6 +1407,12 @@ int main (int argc, char *argv[])
                                 clew_stack_push_int32(&clew->options.clip_path, bound.minlat);
 
                         }       break;
+                        case OPTION_CLIP_STRATEGY:
+                                clew->options.clip_strategy = clew_clip_strategy_value(optarg);
+                                if (clew->options.clip_strategy == CLEW_CLIP_STRATEGY_UNKNOWN) {
+                                        clew_errorf("strategy is invalid, see help");
+                                        goto bail;
+                                }
                 }
         }
 
@@ -1369,7 +1443,7 @@ int main (int argc, char *argv[])
         for (i = 0, il = clew_stack_count(&clew->options.clip_path); i < il; i += 2) {
                 clew_infof("    %12.7f,%12.7f", clew_stack_at_int32(&clew->options.clip_path, i + 0) / 1e7, clew_stack_at_int32(&clew->options.clip_path, i + 1) / 1e7);
         }
-        clew_infof("  clip-strategy      : 'smart'");
+        clew_infof("  clip-strategy      : '%s'", clew_clip_strategy_string(clew->options.clip_strategy));
         clew_infof("  filter             : '%s'", clew_expression_orig(clew->options.filter));
         clew_infof("  keep-tags          : '%s'", clew_expression_orig(clew->options.keep_tags));
         clew_infof("  keep-tags-node     : '%s'", clew_expression_orig(clew->options.keep_tags_node));
@@ -1403,33 +1477,33 @@ int main (int argc, char *argv[])
 
                 clew_input_init_options_default(&input_init_options);
                 input_init_options.path                         = *(char **) clew_stack_at(&clew->options.inputs, i);
-                input_init_options.callback_bounds_start        = input_callback_bounds_start;
-                input_init_options.callback_bounds_end          = input_callback_bounds_end;
-                input_init_options.callback_node_start          = input_callback_node_start;
-                input_init_options.callback_node_end            = input_callback_node_end;
-                input_init_options.callback_way_start           = input_callback_way_start;
-                input_init_options.callback_way_end             = input_callback_way_end;
-                input_init_options.callback_relation_start      = input_callback_relation_start;
-                input_init_options.callback_relation_end        = input_callback_relation_end;
-                input_init_options.callback_tag_start           = input_callback_tag_start;
-                input_init_options.callback_tag_end             = input_callback_tag_end;
-                input_init_options.callback_nd_start            = input_callback_nd_start;
-                input_init_options.callback_nd_end              = input_callback_nd_end;
-                input_init_options.callback_member_start        = input_callback_member_start;
-                input_init_options.callback_member_end          = input_callback_member_end;
-                input_init_options.callback_minlon              = input_callback_minlon;
-                input_init_options.callback_minlat              = input_callback_minlat;
-                input_init_options.callback_maxlon              = input_callback_maxlon;
-                input_init_options.callback_maxlat              = input_callback_maxlat;
-                input_init_options.callback_id                  = input_callback_id;
-                input_init_options.callback_lat                 = input_callback_lat;
-                input_init_options.callback_lon                 = input_callback_lon;
-                input_init_options.callback_ref                 = input_callback_ref;
-                input_init_options.callback_type                = input_callback_type;
-                input_init_options.callback_role                = input_callback_role;
-                input_init_options.callback_k                   = input_callback_k;
-                input_init_options.callback_v                   = input_callback_v;
-                input_init_options.callback_error               = input_callback_error;
+                input_init_options.callback_bounds_start        = input_callback_extract_bounds_start;
+                input_init_options.callback_bounds_end          = input_callback_extract_bounds_end;
+                input_init_options.callback_node_start          = input_callback_extract_node_start;
+                input_init_options.callback_node_end            = input_callback_extract_node_end;
+                input_init_options.callback_way_start           = input_callback_extract_way_start;
+                input_init_options.callback_way_end             = input_callback_extract_way_end;
+                input_init_options.callback_relation_start      = input_callback_extract_relation_start;
+                input_init_options.callback_relation_end        = input_callback_extract_relation_end;
+                input_init_options.callback_tag_start           = input_callback_extract_tag_start;
+                input_init_options.callback_tag_end             = input_callback_extract_tag_end;
+                input_init_options.callback_nd_start            = input_callback_extract_nd_start;
+                input_init_options.callback_nd_end              = input_callback_extract_nd_end;
+                input_init_options.callback_member_start        = input_callback_extract_member_start;
+                input_init_options.callback_member_end          = input_callback_extract_member_end;
+                input_init_options.callback_minlon              = input_callback_extract_minlon;
+                input_init_options.callback_minlat              = input_callback_extract_minlat;
+                input_init_options.callback_maxlon              = input_callback_extract_maxlon;
+                input_init_options.callback_maxlat              = input_callback_extract_maxlat;
+                input_init_options.callback_id                  = input_callback_extract_id;
+                input_init_options.callback_lat                 = input_callback_extract_lat;
+                input_init_options.callback_lon                 = input_callback_extract_lon;
+                input_init_options.callback_ref                 = input_callback_extract_ref;
+                input_init_options.callback_type                = input_callback_extract_type;
+                input_init_options.callback_role                = input_callback_extract_role;
+                input_init_options.callback_k                   = input_callback_extract_k;
+                input_init_options.callback_v                   = input_callback_extract_v;
+                input_init_options.callback_error               = input_callback_extract_error;
                 input_init_options.callback_context             = clew;
 
                 input = clew_input_create(&input_init_options);
@@ -1450,10 +1524,10 @@ int main (int argc, char *argv[])
                 }
         }
 
-        clew_infof("filtering finished");
-        clew_infof("  nodes    : %ld", clew_bitmap_count(&clew->node_ids));
-        clew_infof("  ways     : %ld", clew_bitmap_count(&clew->way_ids));
-        clew_infof("  relations: %ld", clew_bitmap_count(&clew->relation_ids));
+        clew_infof("  extracted");
+        clew_infof("    nodes    : %ld", clew_bitmap_count(&clew->node_ids));
+        clew_infof("    ways     : %ld", clew_bitmap_count(&clew->way_ids));
+        clew_infof("    relations: %ld", clew_bitmap_count(&clew->relation_ids));
 
 out:
         if (clew != NULL) {
