@@ -171,10 +171,10 @@ int clew_debug_printf (unsigned int level, const char *name, const char *functio
         tm = gmtime(&timeval_tv_sec);
         strftime(date, sizeof(date), "%H:%M:%S", tm);
 
-        if (level == CLEW_DEBUG_LEVEL_INFO_PLUS) {
-                fprintf(stderr, "clew:%s.%03d:%-5s:%-5s: %s (%s %s:%d)\n", date, milliseconds, name, clew_debug_level_to_string(level), debug_buffer, function, file, line);
-        } else {
+        if (level == CLEW_DEBUG_LEVEL_INFO) {
                 fprintf(stderr, "clew:%s.%03d:%-5s:%-5s: %s\n", date, milliseconds, name, clew_debug_level_to_string(level), debug_buffer);
+        } else {
+                fprintf(stderr, "clew:%s.%03d:%-5s:%-5s: %s (%s %s:%d)\n", date, milliseconds, name, clew_debug_level_to_string(level), debug_buffer, function, file, line);
         }
         fflush(stderr);
 

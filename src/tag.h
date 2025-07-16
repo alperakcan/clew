@@ -635,6 +635,15 @@ enum {
         clew_tag_motor_vehicle_no,
         clew_tag_motor_vehicle_yes,
         clew_tag_motor_vehicle_private,
+        clew_tag_motor_vehicle_destination,
+        clew_tag_motor_vehicle_agricultural,
+        clew_tag_motor_vehicle_forestry,
+        clew_tag_motor_vehicle_designated,
+        clew_tag_motor_vehicle_permissive,
+        clew_tag_motor_vehicle_permit,
+        clew_tag_motor_vehicle_customers,
+        clew_tag_motor_vehicle_delivery,
+        clew_tag_motor_vehicle_unknown,
 
         clew_tag_mountain_pass_no,
         clew_tag_mountain_pass_yes,
@@ -703,6 +712,7 @@ enum {
 
         clew_tag_oneway_no,
         clew_tag_oneway_yes,
+        clew_tag_oneway__1,
 
         clew_tag_place_country,
         clew_tag_place_state,
@@ -1424,6 +1434,9 @@ uint32_t * clew_tags_group_population (void);
 
 int clew_tag_is_group_ref (uint32_t tag);
 uint32_t * clew_tags_group_ref (void);
+
+int clew_tag_is_group_oneway (uint32_t tag);
+uint32_t * clew_tags_group_oneway (void);
 
 int clew_tag_is_group_tunnel (uint32_t tag);
 uint32_t * clew_tags_group_tunnel (void);

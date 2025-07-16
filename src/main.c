@@ -5,6 +5,8 @@
 #include <string.h>
 #include <getopt.h>
 
+#include <time.h>
+
 #define CLEW_DEBUG_NAME                 "main"
 #include "debug.h"
 #include "input.h"
@@ -183,6 +185,8 @@ struct clew_mesh_way {
 struct clew_mesh_node_neighbour {
         struct clew_mesh_node *mesh_node;
         double distance;
+        double duration;
+        double cost;
 };
 
 struct clew_mesh_node {
@@ -193,6 +197,9 @@ struct clew_mesh_node {
         double pqueue_cost;
         uint64_t pqueue_pos;
         struct clew_mesh_node *pqueue_prev;
+
+        double pqueue_duration;
+        double pqueue_distance;
 };
 
 struct clew_mesh_point {
@@ -200,6 +207,7 @@ struct clew_mesh_point {
         int32_t lat;
         double nearest_distance;
         struct clew_mesh_node *nearest_node;
+        int solved;
 };
 
 struct clew {
@@ -273,8 +281,8 @@ static const char *g_filter_preset_motorcycle_scenic =
         "highway_residential or "
         "highway_living_street "
         ") "
-        "and not toll_yes "
-        "and not tunnel_yes";
+        "and not ( motor_vehicle_no or motor_vehicle_private ) "
+        "and not ( access_no or access_private) ";
 
 static const char *g_filter_preset_motorcycle_scenic_plus =
         "( "
@@ -287,8 +295,9 @@ static const char *g_filter_preset_motorcycle_scenic_plus =
         "highway_living_street or "
         "(( highway_track or highway_path ) and surface_asphalt )"
         ") "
-        "and not toll_yes "
-        "and not tunnel_yes";
+        "and not ( motor_vehicle_no or motor_vehicle_private ) "
+        "and not ( access_no or access_private) ";
+        //"and not toll_yes ";
 
 static int tags_expression_match_has (void *context, uint32_t tag);
 
@@ -1855,6 +1864,59 @@ static uint64_t mesh_node_pqueue_getpos (const void *a)
         return t1->pqueue_pos;
 }
 
+KHASH_SET_INIT_INT64(mesh_visited);
+
+static int64_t clew_mesh_node_neighbours_count_depth (
+        struct clew_mesh_node *mnode,
+        int64_t depth,
+        int64_t mdepth,
+        int64_t count,
+        int64_t mcount,
+        khash_t(mesh_visited) *visited)
+{
+        if (mnode == NULL || (mdepth > 0 && depth >= mdepth)) {
+                return 0;
+        }
+
+        khint_t k = kh_get(mesh_visited, visited, mnode->node->id);
+        if (k != kh_end(visited)) {
+                return 0;
+        }
+
+        int ret;
+        k = kh_put(mesh_visited, visited, mnode->node->id, &ret);
+        (void) k;
+        (void) ret;
+
+        int64_t total = 0;
+        uint64_t nl = clew_stack_count(&mnode->mesh_neighbours);
+
+        total += nl;
+        if (mcount > 0 && count + total >= mcount) {
+                return total;
+        }
+
+        for (uint64_t n = 0; n < nl; n++) {
+                struct clew_mesh_node_neighbour *rneig = (struct clew_mesh_node_neighbour *) clew_stack_at(&mnode->mesh_neighbours, n);
+                if (rneig && rneig->mesh_node) {
+                        total += clew_mesh_node_neighbours_count_depth(rneig->mesh_node, depth + 1, mdepth, count + total, mcount, visited);
+                        if (mcount > 0 && count + total >= mcount) {
+                                return total;
+                        }
+                }
+        }
+
+        return total;
+}
+
+static int64_t clew_mesh_node_neighbours_count (struct clew_mesh_node *mnode, int64_t mcount)
+{
+        const int64_t mdepth = 16;
+        khash_t(mesh_visited) *visited = kh_init(mesh_visited);
+        int64_t result = clew_mesh_node_neighbours_count_depth(mnode, 0, mdepth, 0, mcount, visited);
+        kh_destroy(mesh_visited, visited);
+        return result;
+}
 static void clew_mesh_node_destroy (struct clew_mesh_node *mnode)
 {
         clew_stack_uninit(&mnode->mesh_ways);
@@ -1929,6 +1991,9 @@ int main (int argc, char *argv[])
 
         uint64_t i;
         uint64_t il;
+
+        uint64_t j;
+        uint64_t jl;
 
         uint64_t w;
         uint64_t wl;
@@ -2566,7 +2631,8 @@ int main (int argc, char *argv[])
 
                 for (t = 0, tl = way->ntags; t < tl; t++) {
                         if (way->tags[t] == clew_tag_oneway_no ||
-                            way->tags[t] == clew_tag_oneway_yes) {
+                            way->tags[t] == clew_tag_oneway_yes ||
+                            way->tags[t] == clew_tag_oneway__1) {
                                 mway.oneway = way->tags[t];
                                 break;
                         }
@@ -2649,22 +2715,49 @@ int main (int argc, char *argv[])
                         if (pmnode != NULL) {
                                 struct clew_point a = clew_point_init(pmnode->node->lon, pmnode->node->lat);
                                 struct clew_point b = clew_point_init(mnode->node->lon, mnode->node->lat);
-                                double distance = clew_point_distance_euclidean(&a, &b) * (1.00 / (double) ( mway->maxspeed - clew_tag_maxspeed_0));
+                                double distance = clew_point_distance_euclidean(&a, &b);
+                                double duration = (distance * 3.60) / ((double) (mway->maxspeed - clew_tag_maxspeed_0));
 
-                                mnodeneigh = &_mnodeneigh;
-                                mnodeneigh->distance = distance;
-                                mnodeneigh->mesh_node = mnode;
-                                rc = clew_stack_push(&pmnode->mesh_neighbours, &mnodeneigh);
-                                if (rc < 0) {
-                                        clew_errorf("can not push mesh node neighbour");
-                                        goto bail;
-                                }
-
-                                if (mway->oneway == clew_tag_oneway_no) {
+                                if (mway->oneway == clew_tag_oneway__1) {
                                         mnodeneigh = &_mnodeneigh;
-                                        mnodeneigh->distance = distance;
+                                        mnodeneigh->distance  = distance;
+                                        mnodeneigh->duration  = duration;
+                                        mnodeneigh->cost      = duration;
                                         mnodeneigh->mesh_node = pmnode;
-                                        rc = clew_stack_push(&mnode->mesh_neighbours, &mnodeneigh);
+                                        rc = clew_stack_push(&mnode->mesh_neighbours, mnodeneigh);
+                                        if (rc < 0) {
+                                                clew_errorf("can not push mesh node neighbour");
+                                                goto bail;
+                                        }
+                                } else if (mway->oneway == clew_tag_oneway_yes) {
+                                        mnodeneigh = &_mnodeneigh;
+                                        mnodeneigh->distance  = distance;
+                                        mnodeneigh->duration  = duration;
+                                        mnodeneigh->cost      = duration;
+                                        mnodeneigh->mesh_node = mnode;
+                                        rc = clew_stack_push(&pmnode->mesh_neighbours, mnodeneigh);
+                                        if (rc < 0) {
+                                                clew_errorf("can not push mesh node neighbour");
+                                                goto bail;
+                                        }
+                                } else if (mway->oneway == clew_tag_oneway_no) {
+                                        mnodeneigh = &_mnodeneigh;
+                                        mnodeneigh->distance  = distance;
+                                        mnodeneigh->duration  = duration;
+                                        mnodeneigh->cost      = duration;
+                                        mnodeneigh->mesh_node = mnode;
+                                        rc = clew_stack_push(&pmnode->mesh_neighbours, mnodeneigh);
+                                        if (rc < 0) {
+                                                clew_errorf("can not push mesh node neighbour");
+                                                goto bail;
+                                        }
+
+                                        mnodeneigh = &_mnodeneigh;
+                                        mnodeneigh->distance  = distance;
+                                        mnodeneigh->duration  = duration;
+                                        mnodeneigh->cost      = duration;
+                                        mnodeneigh->mesh_node = pmnode;
+                                        rc = clew_stack_push(&mnode->mesh_neighbours, mnodeneigh);
                                         if (rc < 0) {
                                                 clew_errorf("can not push mesh node neighbour");
                                                 goto bail;
@@ -2676,6 +2769,8 @@ int main (int argc, char *argv[])
                 }
         }
         clew_infof("    nodes: %d", kh_size(clew->mesh_nodes));
+
+        clew_stack_reset(&clew->mesh_points);
 
         clew_infof("building points");
         for (i = 0, il = clew_stack_count(&clew->options.points); i < il; i += 2) {
@@ -2696,6 +2791,15 @@ int main (int argc, char *argv[])
                 spoint    = clew_point_init(clew_stack_at_int32(&clew->options.points, i + 0), clew_stack_at_int32(&clew->options.points, i + 1));
                 sbound    = clew_bound_null();
                 smnode    = NULL;
+
+                int64_t node_count = kh_size(clew->mesh_nodes);
+                int64_t min_neighbour_count = node_count * 0.01;
+                if (min_neighbour_count < 4) {
+                        min_neighbour_count = 4;
+                }
+                if (min_neighbour_count > 8) {
+                        min_neighbour_count = 8;
+                }
 
                 for (k = kh_begin(clew->mesh_nodes); k != kh_end(clew->mesh_nodes); k++) {
                         if (!kh_exist(clew->mesh_nodes, k)) {
@@ -2726,13 +2830,17 @@ int main (int argc, char *argv[])
                                         int32_t r_lon = METERS_TO_E7_LON(distance, cpoint.lat);
                                         sbound = clew_bound_init(cpoint.lon - r_lon, cpoint.lat - r_lat, cpoint.lon + r_lon, cpoint.lat + r_lat);
 #endif
-
-                                        smnode = mnode;
-                                        sdistance = distance;
+                                        if (clew_mesh_node_neighbours_count(mnode, min_neighbour_count) >= min_neighbour_count) {
+                                                smnode = mnode;
+                                                sdistance = distance;
+                                        }
                                 }
                         }
                 }
-                clew_infof("    nearest: %ld, %.3f meters", smnode->node->id, sdistance);
+                clew_infof("    nearest: %ld", smnode->node->id);
+                clew_infof("             %.7f, %.7f", smnode->node->lon * 1e-7, smnode->node->lat * 1e-7);
+                clew_infof("             %.3f meters", sdistance);
+                //clew_infof("             %ld / %ld neighbours", clew_mesh_node_neighbours_count(smnode), clew_mesh_node_neighbours_count2(smnode, node_count));
 
                 {
                         struct clew_mesh_point mpoint;
@@ -2740,6 +2848,7 @@ int main (int argc, char *argv[])
                         mpoint.lat = clew_stack_at_int32(&clew->options.points, i + 1);
                         mpoint.nearest_distance = sdistance;
                         mpoint.nearest_node     = smnode;
+                        mpoint.solved           = 0;
                         rc = clew_stack_push(&clew->mesh_points, &mpoint);
                         if (rc < 0) {
                                 clew_errorf("can not push mesh point");
@@ -2755,10 +2864,17 @@ int main (int argc, char *argv[])
                 khiter_t k;
                 struct clew_mesh_node *mnode;
 
+                double pqueue_ocost;
                 struct clew_pqueue *pqueue;
                 struct clew_mesh_point *mpoint = clew_stack_at(&clew->mesh_points, i);
 
                 clew_infof("  %ld: %.7f,%.7f", i, mpoint->lon * 1e-7, mpoint->lat * 1e-7);
+                clew_infof("    nearest: %ld, %.3f meters", mpoint->nearest_node->node->id, mpoint->nearest_distance);
+
+                for (j = 0, jl = clew_stack_count(&clew->mesh_points); j < jl; j++) {
+                        struct clew_mesh_point *nmpoint = clew_stack_at(&clew->mesh_points, j);
+                        nmpoint->solved = 0;
+                }
 
                 clew_infof("    building pqueue");
                 pqueue = clew_pqueue_create(
@@ -2774,14 +2890,97 @@ int main (int argc, char *argv[])
                                 continue;
                         }
                         mnode = kh_val(clew->mesh_nodes, k);
-                        mnode->pqueue_cost = INFINITY;
-                        mnode->pqueue_pos  = 0;
-                        mnode->pqueue_prev = NULL;
+                        mnode->pqueue_cost      = INFINITY;
+                        mnode->pqueue_pos       = 0;
+                        mnode->pqueue_prev      = NULL;
+                        mnode->pqueue_distance  = 0;
+                        mnode->pqueue_duration  = 0;
                         rc = clew_pqueue_add(pqueue, mnode);
                         if (rc < 0) {
                                 clew_errorf("can not mesh node to pqueue");
                                 clew_pqueue_destroy(pqueue);
                                 goto bail;
+                        }
+                }
+
+                clew_infof("    solving pqueue");
+                {
+                        uint64_t n;
+                        uint64_t nl;
+                        struct clew_mesh_node *rnode;
+                        struct clew_mesh_node_neighbour *rneig;
+                        pqueue_ocost = mpoint->nearest_node->pqueue_cost;
+                        mpoint->nearest_node->pqueue_cost = 0;
+                        clew_pqueue_mod(pqueue, mpoint->nearest_node, pqueue_ocost > mpoint->nearest_node->pqueue_cost);
+                        while ((rnode = clew_pqueue_pop(pqueue)) != NULL) {
+                                if (rnode->pqueue_cost == INFINITY) {
+                                        clew_infof("      there are unsolved points");
+                                        break;
+                                }
+                                for (j = 0, jl = clew_stack_count(&clew->mesh_points); j < jl; j++) {
+                                        struct clew_mesh_point *nmpoint = clew_stack_at(&clew->mesh_points, j);
+                                        if (mpoint == nmpoint) {
+                                                continue;
+                                        }
+                                        if (nmpoint->solved == 1) {
+                                                continue;
+                                        }
+                                        if (0) {
+                                                static double d = INFINITY;
+                                                static struct clew_mesh_node *dnode = NULL;
+                                                struct clew_point b = clew_point_init(rnode->node->lon, rnode->node->lat);
+                                                struct clew_point e = clew_point_init(nmpoint->nearest_node->node->lon, nmpoint->nearest_node->node->lat);
+                                                double f = clew_point_distance_euclidean(&b, &e);
+                                                if (f < d) {
+                                                        d = f;
+                                                        dnode = rnode;
+                                                        clew_infof("d: %ld", dnode->node->id);
+                                                }
+                                        }
+                                        if (rnode == nmpoint->nearest_node) {
+                                                nmpoint->solved = 1;
+                                                time_t ts    = (time_t) rnode->pqueue_cost;
+                                                struct tm *tm = gmtime(&ts);
+                                                char duration[80];
+                                                strftime(duration, sizeof(duration), "%H:%M:%S", tm);
+
+                                                clew_infof("      %2ld: distance: %10.3f, duration: %s", j, rnode->pqueue_distance, duration);
+                                        }
+                                }
+                                for (j = 0, jl = clew_stack_count(&clew->mesh_points); j < jl; j++) {
+                                        struct clew_mesh_point *nmpoint = clew_stack_at(&clew->mesh_points, j);
+                                        if (mpoint == nmpoint) {
+                                                continue;
+                                        }
+                                        if (nmpoint->solved == 0) {
+                                                break;
+                                        }
+                                }
+                                if (j >= jl) {
+                                        clew_infof("      all points are solved");
+                                        break;
+                                }
+                                for (n = 0, nl = clew_stack_count(&rnode->mesh_neighbours); n < nl; n++) {
+                                        rneig = (struct clew_mesh_node_neighbour *) clew_stack_at(&rnode->mesh_neighbours, n);
+                                        if (rnode->pqueue_cost + rneig->cost < rneig->mesh_node->pqueue_cost) {
+                                                rneig->mesh_node->pqueue_prev = rnode;
+
+                                                pqueue_ocost = rneig->mesh_node->pqueue_cost;
+                                                rneig->mesh_node->pqueue_cost     = rnode->pqueue_cost + rneig->cost;
+                                                rneig->mesh_node->pqueue_distance =  rnode->pqueue_distance + rneig->distance;
+                                                rneig->mesh_node->pqueue_duration =  rnode->pqueue_duration + rneig->duration;
+                                                clew_pqueue_mod(pqueue, rneig->mesh_node, pqueue_ocost > rneig->mesh_node->pqueue_cost);
+                                        }
+                                }
+                        }
+                        for (j = 0, jl = clew_stack_count(&clew->mesh_points); j < jl; j++) {
+                                struct clew_mesh_point *nmpoint = clew_stack_at(&clew->mesh_points, j);
+                                if (mpoint == nmpoint) {
+                                        continue;
+                                }
+                                if (nmpoint->solved == 0) {
+                                        clew_infof("        %ld: %.7f,%.7f", j, nmpoint->lon * 1e-7, nmpoint->lat * 1e-7);
+                                }
                         }
                 }
 
