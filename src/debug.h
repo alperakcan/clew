@@ -7,22 +7,24 @@
 #endif
 
 enum {
-        CLEW_DEBUG_LEVEL_INVALID      = 0,
-        CLEW_DEBUG_LEVEL_SILENT       = 1,
-        CLEW_DEBUG_LEVEL_ERROR        = 2,
-        CLEW_DEBUG_LEVEL_WARNING      = 3,
-        CLEW_DEBUG_LEVEL_NOTICE       = 4,
-        CLEW_DEBUG_LEVEL_INFO         = 5,
-        CLEW_DEBUG_LEVEL_DEBUG        = 6,
-        CLEW_DEBUG_LEVEL_TRACE        = 7
-#define CLEW_DEBUG_LEVEL_INVALID      CLEW_DEBUG_LEVEL_INVALID
-#define CLEW_DEBUG_LEVEL_SILENT       CLEW_DEBUG_LEVEL_SILENT
-#define CLEW_DEBUG_LEVEL_ERROR        CLEW_DEBUG_LEVEL_ERROR
-#define CLEW_DEBUG_LEVEL_WARNING      CLEW_DEBUG_LEVEL_WARNING
-#define CLEW_DEBUG_LEVEL_NOTICE       CLEW_DEBUG_LEVEL_NOTICE
-#define CLEW_DEBUG_LEVEL_INFO         CLEW_DEBUG_LEVEL_INFO
-#define CLEW_DEBUG_LEVEL_DEBUG        CLEW_DEBUG_LEVEL_DEBUG
-#define CLEW_DEBUG_LEVEL_TRACE        CLEW_DEBUG_LEVEL_TRACE
+        CLEW_DEBUG_LEVEL_INVALID        = 0,
+        CLEW_DEBUG_LEVEL_SILENT         = 1,
+        CLEW_DEBUG_LEVEL_ERROR          = 2,
+        CLEW_DEBUG_LEVEL_WARNING        = 3,
+        CLEW_DEBUG_LEVEL_NOTICE         = 4,
+        CLEW_DEBUG_LEVEL_INFO           = 5,
+        CLEW_DEBUG_LEVEL_INFO_PLUS      = 6,
+        CLEW_DEBUG_LEVEL_DEBUG          = 7,
+        CLEW_DEBUG_LEVEL_TRACE          = 8
+#define CLEW_DEBUG_LEVEL_INVALID        CLEW_DEBUG_LEVEL_INVALID
+#define CLEW_DEBUG_LEVEL_SILENT         CLEW_DEBUG_LEVEL_SILENT
+#define CLEW_DEBUG_LEVEL_ERROR          CLEW_DEBUG_LEVEL_ERROR
+#define CLEW_DEBUG_LEVEL_WARNING        CLEW_DEBUG_LEVEL_WARNING
+#define CLEW_DEBUG_LEVEL_NOTICE         CLEW_DEBUG_LEVEL_NOTICE
+#define CLEW_DEBUG_LEVEL_INFO           CLEW_DEBUG_LEVEL_INFO
+#define CLEW_DEBUG_LEVEL_INFO_PLUS      CLEW_DEBUG_LEVEL_INFO_PLUS
+#define CLEW_DEBUG_LEVEL_DEBUG          CLEW_DEBUG_LEVEL_DEBUG
+#define CLEW_DEBUG_LEVEL_TRACE          CLEW_DEBUG_LEVEL_TRACE
 };
 
 extern unsigned int clew_debug_level;
@@ -61,7 +63,7 @@ extern unsigned int clew_debug_level;
 
 #define clew_infof(a...) { \
         if (clew_debug_level >= CLEW_DEBUG_LEVEL_INFO) { \
-                clew_debug_printf(CLEW_DEBUG_LEVEL_INFO, CLEW_DEBUG_NAME, __FUNCTION__, __FILE__, __LINE__, a); \
+                clew_debug_printf((clew_debug_level == CLEW_DEBUG_LEVEL_INFO_PLUS) ? CLEW_DEBUG_LEVEL_INFO_PLUS : CLEW_DEBUG_LEVEL_INFO, CLEW_DEBUG_NAME, __FUNCTION__, __FILE__, __LINE__, a); \
         } \
 }
 

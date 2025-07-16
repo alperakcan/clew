@@ -5,7 +5,7 @@
 #include <string.h>
 #include <getopt.h>
 
-#define CLEW_DEBUG_NAME                 "clew"
+#define CLEW_DEBUG_NAME                 "main"
 #include "debug.h"
 #include "input.h"
 #include "bound.h"
@@ -195,6 +195,13 @@ struct clew_mesh_node {
         struct clew_mesh_node *pqueue_prev;
 };
 
+struct clew_mesh_point {
+        int32_t lon;
+        int32_t lat;
+        double nearest_distance;
+        struct clew_mesh_node *nearest_node;
+};
+
 struct clew {
         struct clew_options options;
 
@@ -210,6 +217,8 @@ struct clew {
 
         struct clew_stack mesh_ways;
         khash_t(mesh_nodes) *mesh_nodes;
+
+        struct clew_stack mesh_points;
 
         struct clew_stack read_state;
 
@@ -1829,8 +1838,8 @@ static int mesh_node_pqueue_compare (const void *a, const void *b)
 {
         const struct clew_mesh_node *t1 = (const struct clew_mesh_node *) a;
         const struct clew_mesh_node *t2 = (const struct clew_mesh_node *) b;
-        if (t1->node->id < t2->node->id) return -1;
-        if (t1->node->id > t2->node->id) return 1;
+        if (t1->pqueue_cost < t2->pqueue_cost) return -1;
+        if (t1->pqueue_cost > t2->pqueue_cost) return 1;
         return 0;
 }
 
@@ -1921,9 +1930,6 @@ int main (int argc, char *argv[])
         uint64_t i;
         uint64_t il;
 
-        uint64_t j;
-        uint64_t jl;
-
         uint64_t w;
         uint64_t wl;
 
@@ -1981,6 +1987,7 @@ int main (int argc, char *argv[])
         clew->relations         = clew_stack_init4(sizeof(struct clew_relation *), 64 * 1024, relation_stack_destroy_element, NULL);
         clew->mesh_ways         = clew_stack_init2(sizeof(struct clew_mesh_way), 64 * 1024);
         clew->mesh_nodes        = kh_init(mesh_nodes);
+        clew->mesh_points       = clew_stack_init(sizeof(struct clew_mesh_point));
 
         optind = 1;
         while (1) {
@@ -2670,86 +2677,115 @@ int main (int argc, char *argv[])
         }
         clew_infof("    nodes: %d", kh_size(clew->mesh_nodes));
 
-        clew_infof("solving routes");
-        clew->state = CLEW_STATE_SOLVE_ROUTES;
-
+        clew_infof("building points");
         for (i = 0, il = clew_stack_count(&clew->options.points); i < il; i += 2) {
-                for (j = 0, jl = clew_stack_count(&clew->options.points); j < jl; j += 2) {
-                        struct clew_pqueue *pqueue;
+                double distance;
+                double sdistance;
+                struct clew_mesh_node *smnode;
 
-                        khiter_t k;
-                        struct clew_mesh_node *mnode;
+                khiter_t k;
+                struct clew_mesh_node *mnode;
 
-                        double distance;
-                        double sdistance;
-                        double ddistance;
-                        struct clew_mesh_node *smnode;
-                        struct clew_mesh_node *dmnode;
+                struct clew_point npoint;
+                struct clew_point spoint;
+                struct clew_bound sbound;
 
-                        struct clew_point npoint;
-                        struct clew_point spoint;
-                        struct clew_point dpoint;
+                clew_infof("  %ld: %.7f,%.7f", i / 2, clew_stack_at_int32(&clew->options.points, i + 0) / 1e7, clew_stack_at_int32(&clew->options.points, i + 1) / 1e7);
 
-                        if (i == j) {
+                sdistance = INFINITY;
+                spoint    = clew_point_init(clew_stack_at_int32(&clew->options.points, i + 0), clew_stack_at_int32(&clew->options.points, i + 1));
+                sbound    = clew_bound_null();
+                smnode    = NULL;
+
+                for (k = kh_begin(clew->mesh_nodes); k != kh_end(clew->mesh_nodes); k++) {
+                        if (!kh_exist(clew->mesh_nodes, k)) {
                                 continue;
                         }
+                        mnode = kh_val(clew->mesh_nodes, k);
 
-                        clew_infof("  %ld/%ld: %.7f,%.7f -> %.7f,%.7f",
-                                i / 2, j / 2,
-                                clew_stack_at_int32(&clew->options.points, i + 0) / 1e7, clew_stack_at_int32(&clew->options.points, i + 1) / 1e7,
-                                clew_stack_at_int32(&clew->options.points, j + 0) / 1e7, clew_stack_at_int32(&clew->options.points, j + 1) / 1e7);
-
-                        clew_infof("    building pqueue");
-
-                        sdistance = INFINITY;
-                        ddistance = INFINITY;
-                        smnode    = NULL;
-                        dmnode    = NULL;
-
-                        spoint = clew_point_init(clew_stack_at_int32(&clew->options.points, i + 0), clew_stack_at_int32(&clew->options.points, i + 1));
-                        dpoint = clew_point_init(clew_stack_at_int32(&clew->options.points, j + 0), clew_stack_at_int32(&clew->options.points, j + 1));
-
-                        pqueue = clew_pqueue_create(
-                                kh_size(clew->mesh_nodes),
-                                64 * 1024,
-                                mesh_node_pqueue_compare,
-                                mesh_node_pqueue_setpos,
-                                mesh_node_pqueue_getpos
-                        );
-
-                        for (k = kh_begin(clew->mesh_nodes); k != kh_end(clew->mesh_nodes); k++) {
-                                if (!kh_exist(clew->mesh_nodes, k)) {
-                                        continue;
-                                }
-                                mnode = kh_val(clew->mesh_nodes, k);
-                                mnode->pqueue_cost = INFINITY;
-                                mnode->pqueue_pos  = 0;
-                                mnode->pqueue_prev = NULL;
-                                rc = clew_pqueue_add(pqueue, mnode);
-                                if (rc < 0) {
-                                        clew_errorf("can not mesh node to pqueue");
-                                        clew_pqueue_destroy(pqueue);
-                                        goto bail;
-                                }
-
-                                npoint = clew_point_init(mnode->node->lon, mnode->node->lat);
+                        npoint = clew_point_init(mnode->node->lon, mnode->node->lat);
+                        if (clew_bound_invalid(&sbound) ||
+                                clew_bound_contains_point(&sbound, &npoint)) {
                                 distance = clew_point_distance_euclidean(&spoint, &npoint);
                                 if (distance < sdistance) {
+#if 1
+                                        struct clew_point snpoint = clew_point_derived_position(&npoint, distance, 0);
+                                        struct clew_point sepoint = clew_point_derived_position(&npoint, distance, 90);
+                                        struct clew_point sspoint = clew_point_derived_position(&npoint, distance, 180);
+                                        struct clew_point swpoint = clew_point_derived_position(&npoint, distance, 270);
+                                        sbound = clew_bound_null();
+                                        sbound = clew_bound_union_point(&sbound, &snpoint);
+                                        sbound = clew_bound_union_point(&sbound, &sepoint);
+                                        sbound = clew_bound_union_point(&sbound, &sspoint);
+                                        sbound = clew_bound_union_point(&sbound, &swpoint);
+#else
+                                        #define METERS_TO_E7_LAT(m)             ((int32_t) ((m) / 0.011132))   // ~0.0000001 deg = 1.11 meters
+                                        #define METERS_TO_E7_LON(m, lat)        ((int32_t) ((m) / (0.011132 * cos((lat) * 1e-7 * M_PI / 180.0))))
+                                        struct clew_point cpoint = clew_point_init(mnode->node->lon, mnode->node->lat);
+                                        int32_t r_lat = METERS_TO_E7_LAT(distance);
+                                        int32_t r_lon = METERS_TO_E7_LON(distance, cpoint.lat);
+                                        sbound = clew_bound_init(cpoint.lon - r_lon, cpoint.lat - r_lat, cpoint.lon + r_lon, cpoint.lat + r_lat);
+#endif
+
                                         smnode = mnode;
                                         sdistance = distance;
                                 }
-                                distance = clew_point_distance_euclidean(&dpoint, &npoint);
-                                if (distance < ddistance) {
-                                        dmnode = mnode;
-                                        ddistance = distance;
-                                }
                         }
-                        clew_infof("      nodes      : %ld", clew_pqueue_count(pqueue));
-                        clew_infof("      source     : %ld, %.3f meters", smnode->node->id, sdistance);
-                        clew_infof("      destination: %ld, %.3f meters", dmnode->node->id, ddistance);
-
-                        clew_pqueue_destroy(pqueue);
                 }
+                clew_infof("    nearest: %ld, %.3f meters", smnode->node->id, sdistance);
+
+                {
+                        struct clew_mesh_point mpoint;
+                        mpoint.lon = clew_stack_at_int32(&clew->options.points, i + 0);
+                        mpoint.lat = clew_stack_at_int32(&clew->options.points, i + 1);
+                        mpoint.nearest_distance = sdistance;
+                        mpoint.nearest_node     = smnode;
+                        rc = clew_stack_push(&clew->mesh_points, &mpoint);
+                        if (rc < 0) {
+                                clew_errorf("can not push mesh point");
+                                goto bail;
+                        }
+                }
+        }
+
+        clew_infof("solving routes");
+        clew->state = CLEW_STATE_SOLVE_ROUTES;
+
+        for (i = 0, il = clew_stack_count(&clew->mesh_points); i < il; i++) {
+                khiter_t k;
+                struct clew_mesh_node *mnode;
+
+                struct clew_pqueue *pqueue;
+                struct clew_mesh_point *mpoint = clew_stack_at(&clew->mesh_points, i);
+
+                clew_infof("  %ld: %.7f,%.7f", i, mpoint->lon * 1e-7, mpoint->lat * 1e-7);
+
+                clew_infof("    building pqueue");
+                pqueue = clew_pqueue_create(
+                        kh_size(clew->mesh_nodes) + 2,
+                        64 * 1024,
+                        mesh_node_pqueue_compare,
+                        mesh_node_pqueue_setpos,
+                        mesh_node_pqueue_getpos
+                );
+
+                for (k = kh_begin(clew->mesh_nodes); k != kh_end(clew->mesh_nodes); k++) {
+                        if (!kh_exist(clew->mesh_nodes, k)) {
+                                continue;
+                        }
+                        mnode = kh_val(clew->mesh_nodes, k);
+                        mnode->pqueue_cost = INFINITY;
+                        mnode->pqueue_pos  = 0;
+                        mnode->pqueue_prev = NULL;
+                        rc = clew_pqueue_add(pqueue, mnode);
+                        if (rc < 0) {
+                                clew_errorf("can not mesh node to pqueue");
+                                clew_pqueue_destroy(pqueue);
+                                goto bail;
+                        }
+                }
+
+                clew_pqueue_destroy(pqueue);
         }
 
 out:
@@ -2785,6 +2821,7 @@ out:
                         }
                 }
                 kh_destroy(mesh_nodes, clew->mesh_nodes);
+                clew_stack_uninit(&clew->mesh_points);
                 clew_stack_uninit(&clew->read_tags);
                 clew_stack_uninit(&clew->read_refs);
                 clew_expression_destroy(clew->options.filter);
