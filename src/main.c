@@ -2425,7 +2425,7 @@ int main (int argc, char *argv[])
 
         clew_stack_reset(&clew->read_state);
         clew_stack_push_uint32(&clew->read_state, CLEW_READ_STATE_UNKNOWN);
-        clew->read_keep |= clew->options.keep_nodes     ? CLEW_READ_STATE_NODE     : 0;
+        clew->read_keep  = clew->options.keep_nodes     ? CLEW_READ_STATE_NODE     : 0;
         clew->read_keep |= clew->options.keep_ways      ? CLEW_READ_STATE_WAY      : 0;
         clew->read_keep |= clew->options.keep_relations ? CLEW_READ_STATE_RELATION : 0;
 
@@ -2505,6 +2505,9 @@ int main (int argc, char *argv[])
 
         clew_stack_reset(&clew->read_state);
         clew_stack_push_uint32(&clew->read_state, CLEW_READ_STATE_UNKNOWN);
+        clew->read_keep  = clew->options.keep_nodes     ? CLEW_READ_STATE_NODE     : 0;
+        clew->read_keep |= clew->options.keep_ways      ? CLEW_READ_STATE_WAY      : 0;
+        clew->read_keep |= clew->options.keep_relations ? CLEW_READ_STATE_RELATION : 0;
 
         clew->read_node_start     = 0;
         clew->read_way_start      = 0;
@@ -2578,14 +2581,14 @@ int main (int argc, char *argv[])
         clew_stack_sort(&clew->relations, relation_stack_compare_elements);
 
         clew_infof("  extracted");
-        clew_infof("    nodes    : %ld", clew_bitmap_count(&clew->node_ids));
-        clew_infof("    ways     : %ld", clew_bitmap_count(&clew->way_ids));
-        clew_infof("    relations: %ld", clew_bitmap_count(&clew->relation_ids));
+        clew_infof("    nodes    : %ld", clew_stack_count(&clew->nodes));
+        clew_infof("    ways     : %ld", clew_stack_count(&clew->ways));
+        clew_infof("    relations: %ld", clew_stack_count(&clew->relations));
 
         clew_infof("building mesh");
         clew->state = CLEW_STATE_BUILD_MESH;
 
-        clew_infof("  building mesh ways");
+        clew_infof("  building mesh ways: %ld", clew_stack_count(&clew->ways));
         for (w = 0, wl = clew_stack_count(&clew->ways); w < wl; w++) {
                 struct clew_way *way;
                 struct clew_mesh_way mway;
@@ -2642,9 +2645,8 @@ int main (int argc, char *argv[])
                         goto bail;
                 }
         }
-        clew_infof("    ways: %ld", clew_stack_count(&clew->mesh_ways));
 
-        clew_infof("  building mesh nodes");
+        clew_infof("  building mesh nodes: %ld", clew_stack_count(&clew->nodes));
         for (w = 0, wl = clew_stack_count(&clew->mesh_ways); w < wl; w++) {
                 struct clew_way *way;
                 struct clew_mesh_way *mway;
@@ -2706,12 +2708,14 @@ int main (int argc, char *argv[])
                                 struct clew_point b = clew_point_init(mnode->node->lon, mnode->node->lat);
                                 double distance = clew_point_distance_euclidean(&a, &b);
                                 double duration = (distance * 3.60) / ((double) (mway->maxspeed - clew_tag_maxspeed_0));
+                                double cost     = duration;
+
+                                mnodeneigh = &_mnodeneigh;
+                                mnodeneigh->distance  = distance;
+                                mnodeneigh->duration  = duration;
+                                mnodeneigh->cost      = cost;
 
                                 if (mway->oneway == clew_tag_oneway__1) {
-                                        mnodeneigh = &_mnodeneigh;
-                                        mnodeneigh->distance  = distance;
-                                        mnodeneigh->duration  = duration;
-                                        mnodeneigh->cost      = duration;
                                         mnodeneigh->mesh_node = pmnode;
                                         rc = clew_stack_push(&mnode->mesh_neighbours, mnodeneigh);
                                         if (rc < 0) {
@@ -2719,10 +2723,6 @@ int main (int argc, char *argv[])
                                                 goto bail;
                                         }
                                 } else if (mway->oneway == clew_tag_oneway_yes) {
-                                        mnodeneigh = &_mnodeneigh;
-                                        mnodeneigh->distance  = distance;
-                                        mnodeneigh->duration  = duration;
-                                        mnodeneigh->cost      = duration;
                                         mnodeneigh->mesh_node = mnode;
                                         rc = clew_stack_push(&pmnode->mesh_neighbours, mnodeneigh);
                                         if (rc < 0) {
@@ -2730,10 +2730,6 @@ int main (int argc, char *argv[])
                                                 goto bail;
                                         }
                                 } else if (mway->oneway == clew_tag_oneway_no) {
-                                        mnodeneigh = &_mnodeneigh;
-                                        mnodeneigh->distance  = distance;
-                                        mnodeneigh->duration  = duration;
-                                        mnodeneigh->cost      = duration;
                                         mnodeneigh->mesh_node = mnode;
                                         rc = clew_stack_push(&pmnode->mesh_neighbours, mnodeneigh);
                                         if (rc < 0) {
@@ -2741,10 +2737,6 @@ int main (int argc, char *argv[])
                                                 goto bail;
                                         }
 
-                                        mnodeneigh = &_mnodeneigh;
-                                        mnodeneigh->distance  = distance;
-                                        mnodeneigh->duration  = duration;
-                                        mnodeneigh->cost      = duration;
                                         mnodeneigh->mesh_node = pmnode;
                                         rc = clew_stack_push(&mnode->mesh_neighbours, mnodeneigh);
                                         if (rc < 0) {
@@ -2757,7 +2749,6 @@ int main (int argc, char *argv[])
                         pmnode = mnode;
                 }
         }
-        clew_infof("    nodes: %d", kh_size(clew->mesh_nodes));
 
         clew_stack_reset(&clew->mesh_points);
         clew_stack_reset(&clew->mesh_solutions);
