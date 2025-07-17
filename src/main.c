@@ -5,6 +5,7 @@
 #include <string.h>
 #include <getopt.h>
 
+#include <ctype.h>
 #include <time.h>
 
 #define CLEW_DEBUG_NAME                 "main"
@@ -20,27 +21,25 @@
 #include "tag.h"
 
 #define OPTION_HELP                     'h'
+#define OPTION_DEBUG                    'd'
 
 #define OPTION_INPUT                    'i'
 #define OPTION_OUTPUT                   'o'
+
+#define OPTION_COMMAND                  'c'
 
 #define OPTION_FILTER                   'f'
 #define OPTION_POINTS                   'p'
 
 #define OPTION_CLIP_PATH                0x200
 #define OPTION_CLIP_BOUND               0x201
-#define OPTION_CLIP_OFFSET              'c'
+#define OPTION_CLIP_OFFSET              0x202
 #define OPTION_CLIP_STRATEGY            0x203
 
 #define OPTION_KEEP_TAGS                'k'
 #define OPTION_KEEP_TAGS_NODE           0x301
 #define OPTION_KEEP_TAGS_WAY            0x302
 #define OPTION_KEEP_TAGS_RELATION       0x303
-
-#define OPTION_DROP_TAGS                0x400
-#define OPTION_DROP_TAGS_NODE           0x401
-#define OPTION_DROP_TAGS_WAY            0x402
-#define OPTION_DROP_TAGS_RELATION       0x403
 
 #define OPTION_KEEP_NODES               'n'
 #define OPTION_KEEP_WAYS                'w'
@@ -50,11 +49,12 @@
 #define OPTION_DROP_WAYS                0x505
 #define OPTION_DROP_RELATIONS           0x506
 
-static const char *g_short_options     = "+i:o:c:f:p:k:n:w:r:v:h";
+static const char *g_short_options     = "+i:o:m:f:p:k:n:w:r:d:h";
 static struct option g_long_options[] = {
         { "help",               no_argument,            0,      OPTION_HELP                     },
         { "input",              required_argument,      0,      OPTION_INPUT                    },
         { "output",             required_argument,      0,      OPTION_OUTPUT                   },
+        { "command",            required_argument,      0,      OPTION_COMMAND                  },
         { "clip-path",          required_argument,      0,      OPTION_CLIP_PATH                },
         { "clip-bound",         required_argument,      0,      OPTION_CLIP_BOUND               },
         { "clip-offset",        required_argument,      0,      OPTION_CLIP_OFFSET              },
@@ -65,10 +65,6 @@ static struct option g_long_options[] = {
         { "keep-tags-node",     required_argument,      0,      OPTION_KEEP_TAGS_NODE           },
         { "keep-tags-way",      required_argument,      0,      OPTION_KEEP_TAGS_WAY            },
         { "keep-tags-relation", required_argument,      0,      OPTION_KEEP_TAGS_RELATION       },
-        { "drop-tags",          required_argument,      0,      OPTION_DROP_TAGS                },
-        { "drop-tags-node",     required_argument,      0,      OPTION_DROP_TAGS_NODE           },
-        { "drop-tags-way",      required_argument,      0,      OPTION_DROP_TAGS_WAY            },
-        { "drop-tags-relation", required_argument,      0,      OPTION_DROP_TAGS_RELATION       },
         { "keep-nodes",         required_argument,      0,      OPTION_KEEP_NODES               },
         { "keep-ways",          required_argument,      0,      OPTION_KEEP_WAYS                },
         { "keep-relations",     required_argument,      0,      OPTION_KEEP_RELATIONS           },
@@ -136,10 +132,6 @@ struct clew_options {
         struct clew_expression *keep_tags_node;
         struct clew_expression *keep_tags_way;
         struct clew_expression *keep_tags_relation;
-        struct clew_expression *drop_tags;
-        struct clew_expression *drop_tags_node;
-        struct clew_expression *drop_tags_way;
-        struct clew_expression *drop_tags_relation;
         int keep_nodes;
         int keep_ways;
         int keep_relations;
@@ -207,7 +199,17 @@ struct clew_mesh_point {
         int32_t lat;
         double nearest_distance;
         struct clew_mesh_node *nearest_node;
-        int solved;
+        int _solved;
+};
+
+struct clew_mesh_solution {
+        struct clew_mesh_point *source;
+        struct clew_mesh_point *destination;
+        struct clew_stack mesh_nodes;
+
+        double duration;
+        double distance;
+        double cost;
 };
 
 struct clew {
@@ -227,6 +229,7 @@ struct clew {
         khash_t(mesh_nodes) *mesh_nodes;
 
         struct clew_stack mesh_points;
+        struct clew_stack mesh_solutions;
 
         struct clew_stack read_state;
 
@@ -297,7 +300,6 @@ static const char *g_filter_preset_motorcycle_scenic_plus =
         ") "
         "and not ( motor_vehicle_no or motor_vehicle_private ) "
         "and not ( access_no or access_private) ";
-        //"and not toll_yes ";
 
 static int tags_expression_match_has (void *context, uint32_t tag);
 
@@ -373,7 +375,7 @@ static void print_help (const char *pname)
 {
         fprintf(stdout, "%s usage:\n", pname);
         fprintf(stdout, "\n");
-        fprintf(stdout, "  --input              / -i : input path\n");
+        fprintf(stdout, "  --input              / -i: input path\n");
         fprintf(stdout, "  --output             / -o: output path\n");
         fprintf(stdout, "  --clip-path              : clip path, ex: lon1,lat1 lon2,lat2 ... (default: \"\")\n");
         fprintf(stdout, "  --clip-bound             : clip bound, ex: minlon,minlat,maxlon,maxlat (default: \"\")\n");
@@ -390,119 +392,88 @@ static void print_help (const char *pname)
         fprintf(stdout, "  --keep-tags-relation     : keep relation tag (default: \"\")\n");
         fprintf(stdout, "\n");
         fprintf(stdout, "clip strategies;\n");
+        fprintf(stdout, "  simple, complete_ways, smart\n");
         fprintf(stdout, "\n");
-        fprintf(stdout, "  simple: Runs in a single pass. The extract will contain all nodes inside the region and all ways referencing those nodes "
-                        "as well as all relations referencing any nodes or ways already included. Ways crossing the region boundary will not be "
-                        "reference-complete. Relations will not be reference-complete. This strategy is fast, because it reads the input only once, "
-                        "but the result is not enough for most use cases. It is the only strategy that will work when reading from a socket or pipe.\n");
+        fprintf(stdout, "  simple: runs in a single pass. the extract will contain all nodes inside the region and all ways referencing those nodes "
+                        "as well as all relations referencing any nodes or ways already included. ways crossing the region boundary will not be "
+                        "reference-complete. relations will not be reference-complete.\n");
         fprintf(stdout, "\n");
-        fprintf(stdout, "  complete_ways: Runs in two passes. The extract will contain all nodes inside the region and all ways referencing those "
-                        "nodes as well as all nodes referenced by those ways. The extract will also contain all relations referenced by nodes inside "
-                        "the region or ways already included and, recursively, their parent relations. The ways are reference-complete, but the "
+        fprintf(stdout, "  complete_ways: runs in two passes. the extract will contain all nodes inside the region and all ways referencing those "
+                        "nodes as well as all nodes referenced by those ways. the extract will also contain all relations referenced by nodes inside "
+                        "the region or ways already included and, recursively, their parent relations. the ways are reference-complete, but the "
                         "relations are not.\n");
         fprintf(stdout, "\n");
-        fprintf(stdout, "  smart: Runs in three passes. The extract will contain all nodes inside the region and all ways referencing those nodes as "
-                        "well as all nodes referenced by those ways. The extract will also contain all relations referenced by nodes inside the region "
-                        "or ways already included and, recursively, their parent relations. The extract will also contain all nodes and ways (and the "
+        fprintf(stdout, "  smart: runs in three passes. the extract will contain all nodes inside the region and all ways referencing those nodes as "
+                        "well as all nodes referenced by those ways. the extract will also contain all relations referenced by nodes inside the region "
+                        "or ways already included and, recursively, their parent relations. the extract will also contain all nodes and ways (and the "
                         "nodes they reference) referenced by relations tagged “type=multipolygon” directly referencing any nodes in the region or ways "
-                        "referencing nodes in the region. The ways are reference-complete, and all multipolygon relations referencing nodes in the "
-                        "regions or ways that have nodes in the region are reference-complete. Other relations are not.\n");
+                        "referencing nodes in the region. the ways are reference-complete, and all multipolygon relations referencing nodes in the "
+                        "regions or ways that have nodes in the region are reference-complete. other relations are not.\n");
         fprintf(stdout, "\n");
         fprintf(stdout, "filter;\n");
-        fprintf(stdout, "  Logical expression using predefined tags and operators: and, or, not, (, ). The filter applies to each route segment's tags "
+        fprintf(stdout, "  logical expression using predefined tags and operators: and, or, not, (, ). the filter applies to each route segment's tags "
                         "to determine inclusion.\n");
-        fprintf(stdout, "    - Tags follow the format: key_value (e.g., highway_trunk, surface_dirt)\n");
-        fprintf(stdout, "    - Wildcards supported: highway_* matches all highway types\n");
+        fprintf(stdout, "    - tags follow the format: key_value (e.g., highway_trunk, surface_dirt)\n");
+        fprintf(stdout, "    - wildcards supported for key groups: key_* (e.g., highway_* matches all highway types)\n");
         fprintf(stdout, "\n");
-        fprintf(stdout, "  Example:\n");
+        fprintf(stdout, "  example:\n");
         fprintf(stdout, "    (highway_trail or highway_track) and not surface_asphalt\n");
         fprintf(stdout, "\n");
         fprintf(stdout, "  presets;\n");
-        fprintf(stdout, "    motorcycle-scenic:\n"
-                        "\n"
-                        "      This preset is designed for relaxed motorcycle travel on asphalt roads.\n"
-                        "      It avoids tolls, tunnels, and rough or unpaved paths.\n"
-                        "\n"
-                        "      Allowed road types:\n"
-                        "        - Primary, secondary, tertiary roads\n"
-                        "        - Residential and service roads\n"
-                        "\n"
-                        "      Requirements:\n"
-                        "        - Surface must be asphalt\n"
-                        "\n"
-                        "      Excluded:\n"
-                        "        - Toll roads\n"
-                        "        - Tunnels\n"
-                        "        - Tracks, paths, or trails used for walking, cycling, or offroad use\n"
-                        "\n"
-                        "      Ideal for:\n"
-                        "        - Scenic riding\n"
-                        "        - Visiting villages and cafés\n"
-                        "        - Comfortable road touring with occasional stops\n"
+        fprintf(stdout, "    motorcycle-scenic, motorcycle-scenic+\n");
+        fprintf(stdout, "\n");
+        fprintf(stdout, "    motorcycle-scenic: for relaxed motorcycle travel on asphalt roads.it avoids tolls, tunnels, and rough or unpaved paths.\n"
+                        "      ideal for:\n"
+                        "        - scenic riding\n"
+                        "        - visiting villages and cafés\n"
+                        "        - comfortable road touring with occasional stops\n"
                         "      filter:\n"
                         "        %s\n", g_filter_preset_motorcycle_scenic);
         fprintf(stdout, "\n");
-        fprintf(stdout, "    motorcycle-scenic+:\n"
-                        "\n"
-                        "      This preset is designed for relaxed motorcycle travel on asphalt roads.\n"
-                        "      It avoids tolls, tunnels, and rough or unpaved paths.\n"
-                        "\n"
-                        "      Allowed road types:\n"
-                        "        - Primary, secondary, tertiary roads\n"
-                        "        - Residential and service roads\n"
-                        "        - Tracks and paths\n"
-                        "\n"
-                        "      Requirements:\n"
-                        "        - Surface must be asphalt\n"
-                        "\n"
-                        "      Excluded:\n"
-                        "        - Toll roads\n"
-                        "        - Tunnels\n"
-                        "        - Tracks, paths without asphalt, or trails used for walking, cycling, or offroad use\n"
-                        "\n"
-                        "      Ideal for:\n"
-                        "        - Scenic riding\n"
-                        "        - Visiting villages and cafés\n"
-                        "        - Comfortable road touring with occasional stops\n"
+        fprintf(stdout, "    motorcycle-scenic+: for relaxed motorcycle travel on asphalt roads. it avoids tolls, tunnels, and rough or unpaved paths.\n"
+                        "      ideal for:\n"
+                        "        - scenic riding\n"
+                        "        - visiting villages and cafés\n"
+                        "        - comfortable road touring with occasional stops\n"
                         "      filter:\n"
                         "        %s\n", g_filter_preset_motorcycle_scenic_plus);
         fprintf(stdout, "\n");
         fprintf(stdout, "highway tags;\n");
         fprintf(stdout, "\n");
         fprintf(stdout, "  roads:\n");
-        fprintf(stdout, "    highway_motorway      : A restricted access major divided highway, normally with 2 or more running lanes plus emergency hard shoulder. Equivalent to the Freeway, Autobahn, etc..\n");
-        fprintf(stdout, "    highway_trunk         : The most important roads in a country's system that aren't motorways. (Need not necessarily be a divided highway.\n");
-        fprintf(stdout, "    highway_primary       : The next most important roads in a country's system. (Often link larger towns.)\n");
-        fprintf(stdout, "    highway_secondary     : The next most important roads in a country's system. (Often link towns.)\n");
-        fprintf(stdout, "    highway_tertiary      : The next most important roads in a country's system. (Often link smaller towns and villages)\n");
-        fprintf(stdout, "    highway_unclassified  : The least important through roads in a country's system i.e. minor roads of a lower classification than tertiary, but which serve a purpose other than access to properties. (Often link villages and hamlets.)\n");
-        fprintf(stdout, "    highway_residential   : Roads which serve as an access to housing, without function of connecting settlements. Often lined with housing.\n");
+        fprintf(stdout, "    highway_motorway      : a restricted access major divided highway, normally with 2 or more running lanes plus emergency hard shoulder. equivalent to the freeway, autobahn, etc..\n");
+        fprintf(stdout, "    highway_trunk         : the most important roads in a country's system that aren't motorways. (need not necessarily be a divided highway.\n");
+        fprintf(stdout, "    highway_primary       : the next most important roads in a country's system. (often link larger towns.)\n");
+        fprintf(stdout, "    highway_secondary     : the next most important roads in a country's system. (often link towns.)\n");
+        fprintf(stdout, "    highway_tertiary      : the next most important roads in a country's system. (often link smaller towns and villages)\n");
+        fprintf(stdout, "    highway_unclassified  : the least important through roads in a country's system i.e. minor roads of a lower classification than tertiary, but which serve a purpose other than access to properties. (often link villages and hamlets.)\n");
+        fprintf(stdout, "    highway_residential   : roads which serve as an access to housing, without function of connecting settlements. often lined with housing.\n");
         fprintf(stdout, "\n");
         fprintf(stdout, "  link roads:\n");
-        fprintf(stdout, "    highway_motorway_link : The link roads (sliproads/ramps) leading to/from a motorway from/to a motorway or lower class highway. Normally with the same motorway restrictions.\n");
-        fprintf(stdout, "    highway_trunk_link    : The link roads (sliproads/ramps) leading to/from a trunk road from/to a trunk road or lower class highway.\n");
-        fprintf(stdout, "    highway_primary_link  : The link roads (sliproads/ramps) leading to/from a primary road from/to a primary road or lower class highway.\n");
-        fprintf(stdout, "    highway_secondary_link: The link roads (sliproads/ramps) leading to/from a secondary road from/to a secondary road or lower class highway.\n");
-        fprintf(stdout, "    highway_tertiary_link : The link roads (sliproads/ramps) leading to/from a tertiary road from/to a tertiary road or lower class highway.\n");
+        fprintf(stdout, "    highway_motorway_link : the link roads (sliproads/ramps) leading to/from a motorway from/to a motorway or lower class highway. normally with the same motorway restrictions.\n");
+        fprintf(stdout, "    highway_trunk_link    : the link roads (sliproads/ramps) leading to/from a trunk road from/to a trunk road or lower class highway.\n");
+        fprintf(stdout, "    highway_primary_link  : the link roads (sliproads/ramps) leading to/from a primary road from/to a primary road or lower class highway.\n");
+        fprintf(stdout, "    highway_secondary_link: the link roads (sliproads/ramps) leading to/from a secondary road from/to a secondary road or lower class highway.\n");
+        fprintf(stdout, "    highway_tertiary_link : the link roads (sliproads/ramps) leading to/from a tertiary road from/to a tertiary road or lower class highway.\n");
         fprintf(stdout, "\n");
         fprintf(stdout, "  special road types:\n");
-        fprintf(stdout, "    highway_living_street : For living streets, which are residential streets where pedestrians have legal priority over cars, speeds are kept very low.\n");
-        fprintf(stdout, "    highway_service       : For access roads to, or within an industrial estate, camp site, business park, car park, alleys, etc.\n");
-        fprintf(stdout, "    highway_pedestrian    : For roads used mainly/exclusively for pedestrians in shopping and some residential areas which may allow access by motorised vehicles only for very limited periods of the day.\n");
-        fprintf(stdout, "    highway_track         : Roads for mostly agricultural or forestry uses.\n");
-        fprintf(stdout, "    highway_bus_guideway  : A busway where the vehicle guided by the way (though not a railway) and is not suitable for other traffic.\n");
-        fprintf(stdout, "    highway_escape        : For runaway truck ramps, runaway truck lanes, emergency escape ramps, or truck arrester beds.\n");
-        fprintf(stdout, "    highway_raceway       : A course or track for (motor) racing\n");
-        fprintf(stdout, "    highway_road          : A road/way/street/motorway/etc. of unknown type. It can stand for anything ranging from a footpath to a motorway.\n");
-        fprintf(stdout, "    highway_bus_way       : A dedicated roadway for bus rapid transit systems\n");
+        fprintf(stdout, "    highway_living_street : for living streets, which are residential streets where pedestrians have legal priority over cars, speeds are kept very low.\n");
+        fprintf(stdout, "    highway_service       : for access roads to, or within an industrial estate, camp site, business park, car park, alleys, etc.\n");
+        fprintf(stdout, "    highway_pedestrian    : for roads used mainly/exclusively for pedestrians in shopping and some residential areas which may allow access by motorised vehicles only for very limited periods of the day.\n");
+        fprintf(stdout, "    highway_track         : roads for mostly agricultural or forestry uses.\n");
+        fprintf(stdout, "    highway_bus_guideway  : a busway where the vehicle guided by the way (though not a railway) and is not suitable for other traffic.\n");
+        fprintf(stdout, "    highway_escape        : for runaway truck ramps, runaway truck lanes, emergency escape ramps, or truck arrester beds.\n");
+        fprintf(stdout, "    highway_raceway       : a course or track for (motor) racing\n");
+        fprintf(stdout, "    highway_road          : a road/way/street/motorway/etc. of unknown type. it can stand for anything ranging from a footpath to a motorway.\n");
+        fprintf(stdout, "    highway_bus_way       : a dedicated roadway for bus rapid transit systems\n");
         fprintf(stdout, "\n");
         fprintf(stdout, "  paths:\n");
-        fprintf(stdout, "    highway_footway       : For designated footpaths; i.e., mainly/exclusively for pedestrians. This includes walking tracks and gravel paths.\n");
-        fprintf(stdout, "    highway_bridleway     : For horse riders. Pedestrians are usually also permitted, cyclists may be permitted depending on local rules/laws. Motor vehicles are forbidden.\n");
-        fprintf(stdout, "    highway_steps         : For flights of steps (stairs) on footways.\n");
-        fprintf(stdout, "    highway_corridor      : For a hallway inside of a building.\n");
-        fprintf(stdout, "    highway_path          : A non-specific path.\n");
-        fprintf(stdout, "    highway_via_ferrata   : A via ferrata is a route equipped with fixed cables, stemples, ladders, and bridges in order to increase ease and security for climbers.\n");
+        fprintf(stdout, "    highway_footway       : for designated footpaths; i.e., mainly/exclusively for pedestrians. this includes walking tracks and gravel paths.\n");
+        fprintf(stdout, "    highway_bridleway     : for horse riders. pedestrians are usually also permitted, cyclists may be permitted depending on local rules/laws. motor vehicles are forbidden.\n");
+        fprintf(stdout, "    highway_steps         : for flights of steps (stairs) on footways.\n");
+        fprintf(stdout, "    highway_corridor      : for a hallway inside of a building.\n");
+        fprintf(stdout, "    highway_path          : a non-specific path.\n");
+        fprintf(stdout, "    highway_via_ferrata   : a via ferrata is a route equipped with fixed cables, stemples, ladders, and bridges in order to increase ease and security for climbers.\n");
 }
 
 static int tags_expression_match_has (void *context, uint32_t tag)
@@ -511,6 +482,93 @@ static int tags_expression_match_has (void *context, uint32_t tag)
         struct clew_stack *tags = context;
         pos = clew_stack_search_uint32(tags, tag);
         return (pos == UINT64_MAX) ? 0 : 1;
+}
+
+static inline double parse_tag_fix_length_value_clamp_nonnegative (double x)
+{
+        return (x < 0.0) ? 0.0 : x;
+}
+
+static uint32_t parse_tag_fix_length_value (const char *v_raw)
+{
+        const char *v = v_raw;
+        char *endptr = NULL;
+        double meters = 0.0;
+
+        const char *apos = strchr(v, '\'');  // typewriter apostrophe
+        const char *quote = strchr(v, '"');  // typewriter quote
+
+        // 1. Handle feet + inches like 16'3" or 6' or 3"
+        if (apos || quote) {
+                double feet = 0.0, inches = 0.0;
+
+                if (apos) {
+                        feet = strtod(v, &endptr);
+                        if (endptr != apos) return UINT32_MAX; // invalid format
+                }
+
+                if (quote) {
+                        if (apos) {
+                                inches = strtod(apos + 1, &endptr);
+                                if (endptr != quote) return UINT32_MAX;
+                        } else {
+                                inches = strtod(v, &endptr);
+                                if (endptr != quote) return UINT32_MAX;
+                        }
+                }
+
+                meters = (feet * 0.3048) + (inches * 0.0254);
+                return (uint32_t) round(parse_tag_fix_length_value_clamp_nonnegative(meters));
+        }
+
+        // 2. Handle suffix units: "2 m", "0.6 mi", etc.
+        double value = strtod(v, &endptr);
+
+        if (endptr == v) return UINT32_MAX; // no valid number found
+
+        while (*endptr && isspace(*endptr)) ++endptr;
+
+        if (strncmp(endptr, "m", 1) == 0 || *endptr == '\0') {
+                // meters (default)
+                meters = value;
+        } else if (strncmp(endptr, "mi", 2) == 0) {
+                meters = value * 1609.344;
+        } else {
+                // unsupported unit
+                return UINT32_MAX;
+        }
+
+        return (uint32_t) round(parse_tag_fix_length_value_clamp_nonnegative(meters));
+}
+
+static void parse_tag_fix_length (char *k, char *v)
+{
+        int length;
+        uint32_t tag;
+        (void) k;
+        length = parse_tag_fix_length_value(v);
+        if (length == 0) {
+                tag = clew_tag_length_0;
+        } else if (length >= 1 && length <= 100) {
+                tag = clew_tag_length_1 + (length - 1);
+        } else if (length >= 110 && length <= 1000) {
+                tag = clew_tag_length_110 + ((length - 110) / 10);
+        } else if (length >= 1010 && length <= 5000) {
+                tag = clew_tag_length_1010 + ((length - 1010) / 10);
+        } else if (length >= 5025 && length <= 10000) {
+                tag = clew_tag_length_5025 + ((length - 5025) / 25);
+        } else if (length >= 10050 && length <= 50000) {
+                tag = clew_tag_length_10050 + ((length - 10050) / 50);
+        } else if (length >= 50100 && length <= 100000) {
+                tag = clew_tag_length_50100 + ((length - 50100) / 100);
+        } else if (length >= 100250 && length <= 500000) {
+                tag = clew_tag_length_100250 + ((length - 100250) / 250);
+        } else if (length >= 500500 && length <= 1000000) {
+                tag = clew_tag_length_500500 + ((length - 500500) / 500);
+        } else {
+                tag = clew_tag_length_unknown;
+        }
+        snprintf(v, READ_TAG_V_LENGTH, "length_%d", tag - clew_tag_length_0);
 }
 
 static void parse_tag_fix_layer (char *k, char *v)
@@ -542,6 +600,8 @@ static void parse_tag_fix (char *k, char *v)
         }
         if (strcasecmp(k, "layer") == 0) {
                 parse_tag_fix_layer(k, v);
+        } else if (strcasecmp(k, "length") == 0) {
+                parse_tag_fix_length(k, v);
         }
 }
 
@@ -1864,6 +1924,13 @@ static uint64_t mesh_node_pqueue_getpos (const void *a)
         return t1->pqueue_pos;
 }
 
+static void mesh_solution_stack_destroy_element (void *context, void *elem)
+{
+        struct clew_mesh_solution *msolution = (struct clew_mesh_solution *) elem;
+        (void) context;
+        clew_stack_uninit(&msolution->mesh_nodes);
+}
+
 KHASH_SET_INIT_INT64(mesh_visited);
 
 static int64_t clew_mesh_node_neighbours_count_depth (
@@ -2032,10 +2099,6 @@ int main (int argc, char *argv[])
         clew->options.keep_tags_node            = NULL;
         clew->options.keep_tags_way             = NULL;
         clew->options.keep_tags_relation        = NULL;
-        clew->options.drop_tags                 = NULL;
-        clew->options.drop_tags_node            = NULL;
-        clew->options.drop_tags_way             = NULL;
-        clew->options.drop_tags_relation        = NULL;
         clew->options.keep_nodes                = 1;
         clew->options.keep_ways                 = 1;
         clew->options.keep_relations            = 1;
@@ -2053,6 +2116,7 @@ int main (int argc, char *argv[])
         clew->mesh_ways         = clew_stack_init2(sizeof(struct clew_mesh_way), 64 * 1024);
         clew->mesh_nodes        = kh_init(mesh_nodes);
         clew->mesh_points       = clew_stack_init(sizeof(struct clew_mesh_point));
+        clew->mesh_solutions    = clew_stack_init4(sizeof(struct clew_mesh_solution), 64, mesh_solution_stack_destroy_element, NULL);
 
         optind = 1;
         while (1) {
@@ -2173,50 +2237,6 @@ int main (int argc, char *argv[])
                                 }
                                 clew->options.keep_tags_relation = clew_expression_create(optarg);
                                 if (clew->options.keep_tags_relation == NULL) {
-                                        clew_errorf("can not create expression: %s", optarg);
-                                        goto bail;
-                                }
-                                break;
-                        case OPTION_DROP_TAGS:
-                                if (clew->options.drop_tags != NULL) {
-                                        clew_errorf("drop_tags already exists");
-                                        goto bail;
-                                }
-                                clew->options.drop_tags = clew_expression_create(optarg);
-                                if (clew->options.drop_tags == NULL) {
-                                        clew_errorf("can not create expression: %s", optarg);
-                                        goto bail;
-                                }
-                                break;
-                        case OPTION_DROP_TAGS_NODE:
-                                if (clew->options.drop_tags_node != NULL) {
-                                        clew_errorf("drop_tags_node already exists");
-                                        goto bail;
-                                }
-                                clew->options.drop_tags_node = clew_expression_create(optarg);
-                                if (clew->options.drop_tags_node == NULL) {
-                                        clew_errorf("can not create expression: %s", optarg);
-                                        goto bail;
-                                }
-                                break;
-                        case OPTION_DROP_TAGS_WAY:
-                                if (clew->options.drop_tags_way != NULL) {
-                                        clew_errorf("drop_tags_way already exists");
-                                        goto bail;
-                                }
-                                clew->options.drop_tags_way = clew_expression_create(optarg);
-                                if (clew->options.drop_tags_way == NULL) {
-                                        clew_errorf("can not create expression: %s", optarg);
-                                        goto bail;
-                                }
-                                break;
-                        case OPTION_DROP_TAGS_RELATION:
-                                if (clew->options.drop_tags_relation != NULL) {
-                                        clew_errorf("drop_tags_relation already exists");
-                                        goto bail;
-                                }
-                                clew->options.drop_tags_relation = clew_expression_create(optarg);
-                                if (clew->options.drop_tags_relation == NULL) {
                                         clew_errorf("can not create expression: %s", optarg);
                                         goto bail;
                                 }
@@ -2428,10 +2448,6 @@ int main (int argc, char *argv[])
         clew_infof("  keep-tags-node     : '%s'", clew_expression_orig(clew->options.keep_tags_node));
         clew_infof("  keep-tags-way      : '%s'", clew_expression_orig(clew->options.keep_tags_way));
         clew_infof("  keep-tags-relation : '%s'", clew_expression_orig(clew->options.keep_tags_relation));
-        clew_infof("  drop-tags          : '%s'", clew_expression_orig(clew->options.drop_tags));
-        clew_infof("  drop-tags-node     : '%s'", clew_expression_orig(clew->options.drop_tags_node));
-        clew_infof("  drop-tags-way      : '%s'", clew_expression_orig(clew->options.drop_tags_way));
-        clew_infof("  drop-tags-relation : '%s'", clew_expression_orig(clew->options.drop_tags_relation));
         clew_infof("  keep-nodes         : %d", clew->options.keep_nodes);
         clew_infof("  keep-keep_ways     : %d", clew->options.keep_ways);
         clew_infof("  keep-keep_relations: %d", clew->options.keep_relations);
@@ -2771,6 +2787,7 @@ int main (int argc, char *argv[])
         clew_infof("    nodes: %d", kh_size(clew->mesh_nodes));
 
         clew_stack_reset(&clew->mesh_points);
+        clew_stack_reset(&clew->mesh_solutions);
 
         clew_infof("building points");
         for (i = 0, il = clew_stack_count(&clew->options.points); i < il; i += 2) {
@@ -2840,7 +2857,6 @@ int main (int argc, char *argv[])
                 clew_infof("    nearest: %ld", smnode->node->id);
                 clew_infof("             %.7f, %.7f", smnode->node->lon * 1e-7, smnode->node->lat * 1e-7);
                 clew_infof("             %.3f meters", sdistance);
-                //clew_infof("             %ld / %ld neighbours", clew_mesh_node_neighbours_count(smnode), clew_mesh_node_neighbours_count2(smnode, node_count));
 
                 {
                         struct clew_mesh_point mpoint;
@@ -2848,7 +2864,7 @@ int main (int argc, char *argv[])
                         mpoint.lat = clew_stack_at_int32(&clew->options.points, i + 1);
                         mpoint.nearest_distance = sdistance;
                         mpoint.nearest_node     = smnode;
-                        mpoint.solved           = 0;
+                        mpoint._solved          = 0;
                         rc = clew_stack_push(&clew->mesh_points, &mpoint);
                         if (rc < 0) {
                                 clew_errorf("can not push mesh point");
@@ -2873,7 +2889,7 @@ int main (int argc, char *argv[])
 
                 for (j = 0, jl = clew_stack_count(&clew->mesh_points); j < jl; j++) {
                         struct clew_mesh_point *nmpoint = clew_stack_at(&clew->mesh_points, j);
-                        nmpoint->solved = 0;
+                        nmpoint->_solved = 0;
                 }
 
                 clew_infof("    building pqueue");
@@ -2922,7 +2938,7 @@ int main (int argc, char *argv[])
                                         if (mpoint == nmpoint) {
                                                 continue;
                                         }
-                                        if (nmpoint->solved == 1) {
+                                        if (nmpoint->_solved == 1) {
                                                 continue;
                                         }
                                         if (0) {
@@ -2938,13 +2954,43 @@ int main (int argc, char *argv[])
                                                 }
                                         }
                                         if (rnode == nmpoint->nearest_node) {
-                                                nmpoint->solved = 1;
-                                                time_t ts    = (time_t) rnode->pqueue_cost;
+                                                time_t ts    = (time_t) rnode->pqueue_duration;
                                                 struct tm *tm = gmtime(&ts);
                                                 char duration[80];
                                                 strftime(duration, sizeof(duration), "%H:%M:%S", tm);
 
-                                                clew_infof("      %2ld: distance: %10.3f, duration: %s", j, rnode->pqueue_distance, duration);
+                                                clew_infof("      %2ld: distance: %10.3f, duration: %s, cost: %.3f", j, rnode->pqueue_distance, duration, rnode->pqueue_cost);
+
+                                                uint64_t nprnode;
+                                                uint64_t tprnode;
+                                                struct clew_mesh_node *prnode;
+                                                struct clew_mesh_solution msolution;
+                                                for (tprnode = 0, prnode = rnode; prnode; prnode = prnode->pqueue_prev) {
+                                                        tprnode += 1;
+                                                }
+
+                                                msolution.source      = mpoint;
+                                                msolution.destination = nmpoint;
+                                                msolution.mesh_nodes  = clew_stack_init(sizeof(struct clew_mesh_node *));
+                                                msolution.duration    = rnode->pqueue_duration;
+                                                msolution.distance    = rnode->pqueue_distance;
+                                                msolution.cost        = rnode->pqueue_cost;
+                                                rc = clew_stack_resize(&msolution.mesh_nodes, tprnode);
+                                                if (rc < 0) {
+                                                        clew_errorf("stack reserve failed");
+                                                        goto bail;
+                                                }
+                                                for (nprnode = 0, prnode = rnode; prnode; prnode = prnode->pqueue_prev) {
+                                                        rc = clew_stack_put_at(&msolution.mesh_nodes, &prnode, tprnode - nprnode - 1);
+                                                        if (rc < 0) {
+                                                                clew_errorf("stack put at failed, t: %ld, n: %ld", tprnode, nprnode);
+                                                                goto bail;
+                                                        }
+                                                        nprnode += 1;
+                                                }
+                                                clew_stack_push(&clew->mesh_solutions, &msolution);
+
+                                                nmpoint->_solved = 1;
                                         }
                                 }
                                 for (j = 0, jl = clew_stack_count(&clew->mesh_points); j < jl; j++) {
@@ -2952,7 +2998,7 @@ int main (int argc, char *argv[])
                                         if (mpoint == nmpoint) {
                                                 continue;
                                         }
-                                        if (nmpoint->solved == 0) {
+                                        if (nmpoint->_solved == 0) {
                                                 break;
                                         }
                                 }
@@ -2978,7 +3024,7 @@ int main (int argc, char *argv[])
                                 if (mpoint == nmpoint) {
                                         continue;
                                 }
-                                if (nmpoint->solved == 0) {
+                                if (nmpoint->_solved == 0) {
                                         clew_infof("        %ld: %.7f,%.7f", j, nmpoint->lon * 1e-7, nmpoint->lat * 1e-7);
                                 }
                         }
@@ -2987,8 +3033,58 @@ int main (int argc, char *argv[])
                 clew_pqueue_destroy(pqueue);
         }
 
+        clew_infof("writing solutions");
+
+        FILE *fp = fopen("output.gpx", "w+b");
+
+        fprintf(fp, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        fprintf(fp, "<gpx version=\"1.1\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n");
+
+        for (i = 0, il = clew_stack_count(&clew->mesh_points); i < il; i++) {
+                struct clew_mesh_point *mpoint = clew_stack_at(&clew->mesh_points, i);
+                fprintf(fp, " <wpt lon=\"%.7f\" lat=\"%.7f\">\n", mpoint->lon * 1e-7, mpoint->lat * 1e-7);
+                fprintf(fp, "  <name>point %ld</name>\n", i);
+                fprintf(fp, " </wpt>\n");
+        }
+
+        for (i = 0, il = clew_stack_count(&clew->mesh_solutions); i < il; i++) {
+                struct clew_mesh_solution *msolution = clew_stack_at(&clew->mesh_solutions, i);
+                clew_infof("  %.7f,%.7f -> %.7f,%.7f",
+                        msolution->source->lon * 1e-7, msolution->source->lat * 1e-7,
+                        msolution->destination->lon * 1e-7, msolution->destination->lat * 1e-7);
+
+                time_t ts    = (time_t) msolution->duration;
+                struct tm *tm = gmtime(&ts);
+                char duration[80];
+                strftime(duration, sizeof(duration), "%H:%M:%S", tm);
+
+                clew_infof("    distance: %.3f meters", msolution->distance);
+                clew_infof("    duration: %s, %.3f seconds", duration, msolution->duration);
+                clew_infof("    cost    : %.3f", msolution->cost);
+                clew_infof("    nodes   : %ld", clew_stack_count(&msolution->mesh_nodes));
+
+                fprintf(fp, " <trk>\n");
+                fprintf(fp, "  <name>%.7f,%.7f -> %.7f,%.7f</name>\n",
+                        msolution->source->lon * 1e-7, msolution->source->lat * 1e-7,
+                        msolution->destination->lon * 1e-7, msolution->destination->lat * 1e-7);
+                fprintf(fp, "  <desc>distance=%.3fm duration=%.1fs cost=%.3f</desc>\n",
+                        msolution->distance, msolution->duration, msolution->cost);
+                fprintf(fp, "  <trkseg>\n");
+                for (j = 0, jl = clew_stack_count(&msolution->mesh_nodes); j < jl; j++) {
+                        struct clew_mesh_node *mnode = *(struct clew_mesh_node **) clew_stack_at(&msolution->mesh_nodes, j);
+                        fprintf(fp, "   <trkpt lon=\"%.7f\" lat=\"%.7f\"/>\n", mnode->node->lon * 1e-7, mnode->node->lat * 1e-7);
+                }
+                fprintf(fp, "  </trkseg>\n");
+                fprintf(fp, " </trk>\n");
+        }
+
+        fprintf(fp, "</gpx>\n");
+
+        fclose(fp);
+
 out:
         if (clew != NULL) {
+                struct clew_mesh_node *mnode;
                 clew_stack_uninit(&clew->options.inputs);
                 clew_stack_uninit(&clew->options.clip_path);
                 clew_stack_uninit(&clew->options.points);
@@ -2996,10 +3092,6 @@ out:
                 clew_expression_destroy(clew->options.keep_tags_node);
                 clew_expression_destroy(clew->options.keep_tags_way);
                 clew_expression_destroy(clew->options.keep_tags_relation);
-                clew_expression_destroy(clew->options.drop_tags);
-                clew_expression_destroy(clew->options.drop_tags_node);
-                clew_expression_destroy(clew->options.drop_tags_way);
-                clew_expression_destroy(clew->options.drop_tags_relation);
                 clew_stack_uninit(&clew->read_state);
                 clew_bitmap_uninit(&clew->node_ids);
                 clew_bitmap_uninit(&clew->way_ids);
@@ -3008,19 +3100,12 @@ out:
                 clew_stack_uninit(&clew->ways);
                 clew_stack_uninit(&clew->relations);
                 clew_stack_uninit(&clew->mesh_ways);
-                {
-                        khiter_t k;
-                        struct clew_mesh_node *mnode;
-                        for (k = kh_begin(clew->mesh_nodes); k != kh_end(clew->mesh_nodes); k++) {
-                                if (!kh_exist(clew->mesh_nodes, k)) {
-                                        continue;
-                                }
-                                mnode = kh_val(clew->mesh_nodes, k);
-                                clew_mesh_node_destroy(mnode);
-                        }
-                }
+                kh_foreach_value(clew->mesh_nodes, mnode,
+                        clew_mesh_node_destroy(mnode);
+                )
                 kh_destroy(mesh_nodes, clew->mesh_nodes);
                 clew_stack_uninit(&clew->mesh_points);
+                clew_stack_uninit(&clew->mesh_solutions);
                 clew_stack_uninit(&clew->read_tags);
                 clew_stack_uninit(&clew->read_refs);
                 clew_expression_destroy(clew->options.filter);

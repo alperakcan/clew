@@ -1385,6 +1385,7 @@ enum {
         clew_tag_wood_eucalypt,
         clew_tag_wood_unknown,
 
+        #include "tag-length.h"
 	#include "tag-maxspeed.h"
 	#include "tag-minspeed.h"
 

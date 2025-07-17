@@ -91,6 +91,22 @@ static inline int clew_stack_reserve (struct clew_stack *stack, uint64_t reserve
         return 0;
 }
 
+static inline int clew_stack_resize (struct clew_stack *stack, unsigned long long resize)
+{
+	int rc;
+	if (resize > stack->avail) {
+		rc = clew_stack_reserve(stack, resize);
+		if (unlikely(rc != 0)) {
+			return -1;
+		}
+	}
+	if (resize > stack->count) {
+		memset(stack->buffer + stack->count * stack->size, 0, (resize - stack->count) * stack->size);
+	}
+	stack->count = resize;
+	return 0;
+}
+
 static inline void clew_stack_reset (struct clew_stack *stack)
 {
         stack->count = 0;
@@ -127,6 +143,15 @@ static inline int clew_stack_push (struct clew_stack *stack, const void *elem)
         return 0;
 }
 
+static inline int clew_stack_put_at (struct clew_stack *stack, const void *elem, uint64_t at)
+{
+	if (unlikely(at >= stack->count)) {
+		return -1;
+	}
+	memcpy(stack->buffer + at * stack->size, elem, stack->size);
+	return 0;
+}
+
 static inline int clew_stack_push_sorted (struct clew_stack *stack, const void *elem, int (*compare)(const void *, const void *))
 {
         size_t lo = 0, hi = stack->count;
@@ -140,7 +165,6 @@ static inline int clew_stack_push_sorted (struct clew_stack *stack, const void *
                         lo = mid + 1;
         }
 
-        // Insert at position `lo`
         int rc = clew_stack_reserve(stack, stack->count + 1);
         if (rc != 0) return -1;
 
