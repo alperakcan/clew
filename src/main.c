@@ -45,10 +45,6 @@
 #define OPTION_KEEP_WAYS                'w'
 #define OPTION_KEEP_RELATIONS           'r'
 
-#define OPTION_DROP_NODES               0x504
-#define OPTION_DROP_WAYS                0x505
-#define OPTION_DROP_RELATIONS           0x506
-
 static const char *g_short_options     = "+i:o:m:f:p:k:n:w:r:d:h";
 static struct option g_long_options[] = {
         { "help",               no_argument,            0,      OPTION_HELP                     },
@@ -68,9 +64,6 @@ static struct option g_long_options[] = {
         { "keep-nodes",         required_argument,      0,      OPTION_KEEP_NODES               },
         { "keep-ways",          required_argument,      0,      OPTION_KEEP_WAYS                },
         { "keep-relations",     required_argument,      0,      OPTION_KEEP_RELATIONS           },
-        { "drop-nodes",         required_argument,      0,      OPTION_DROP_NODES               },
-        { "drop-ways",          required_argument,      0,      OPTION_DROP_WAYS                },
-        { "drop-relations",     required_argument,      0,      OPTION_DROP_RELATIONS           },
         { 0,                    0,                      0,      0                               }
 };
 
@@ -104,13 +97,13 @@ enum {
 
 enum {
         CLEW_READ_STATE_UNKNOWN                 = 0,
-        CLEW_READ_STATE_BOUNDS                  = 1,
-        CLEW_READ_STATE_NODE                    = 2,
-        CLEW_READ_STATE_WAY                     = 3,
-        CLEW_READ_STATE_RELATION                = 4,
-        CLEW_READ_STATE_TAG                     = 5,
-        CLEW_READ_STATE_ND                      = 6,
-        CLEW_READ_STATE_MEMBER                  = 7
+        CLEW_READ_STATE_BOUNDS                  = 1 << 0,
+        CLEW_READ_STATE_NODE                    = 1 << 1,
+        CLEW_READ_STATE_WAY                     = 1 << 2,
+        CLEW_READ_STATE_RELATION                = 1 << 3,
+        CLEW_READ_STATE_TAG                     = 1 << 4,
+        CLEW_READ_STATE_ND                      = 1 << 5,
+        CLEW_READ_STATE_MEMBER                  = 1 << 6
 #define CLEW_READ_STATE_UNKNOWN                 CLEW_READ_STATE_UNKNOWN
 #define CLEW_READ_STATE_BOUNDS                  CLEW_READ_STATE_BOUNDS
 #define CLEW_READ_STATE_NODE                    CLEW_READ_STATE_NODE
@@ -232,6 +225,7 @@ struct clew {
         struct clew_stack mesh_solutions;
 
         struct clew_stack read_state;
+        int read_keep;
 
         uint64_t read_id;
         int64_t read_lon;
@@ -303,6 +297,8 @@ static const char *g_filter_preset_motorcycle_scenic_plus =
 
 static int tags_expression_match_has (void *context, uint32_t tag);
 
+static uint32_t parse_tag_fix_length_value (const char *v_raw);
+static void parse_tag_fix_length (char *k, char *v);
 static void parse_tag_fix_layer (char *k, char *v);
 static void parse_tag_fix (char *k, char *v);
 
@@ -362,6 +358,31 @@ static int input_callback_extract_k (struct clew_input *input, void *context, co
 static int input_callback_extract_v (struct clew_input *input, void *context, const char *v);
 static int input_callback_extract_error (struct clew_input *input, void *context, unsigned int reason);
 
+static int node_stack_compare_elements (const void *a, const void *b);
+static void node_stack_destroy_element (void *context, void *elem);
+
+static int way_stack_compare_elements (const void *a, const void *b);
+static void way_stack_destroy_element (void *context, void *elem);
+
+static int relation_stack_compare_elements (const void *a, const void *b);
+static void relation_stack_destroy_element (void *context, void *elem);
+
+static int mesh_node_pqueue_compare (const void *a, const void *b);
+static void mesh_node_pqueue_setpos (void *a, uint64_t position);
+static uint64_t mesh_node_pqueue_getpos (const void *a);
+
+static void mesh_solution_stack_destroy_element (void *context, void *elem);
+
+KHASH_SET_INIT_INT64(mesh_visited);
+
+static int64_t clew_mesh_node_neighbours_count_depth (
+        struct clew_mesh_node *mnode,
+        int64_t depth,
+        int64_t mdepth,
+        int64_t count,
+        int64_t mcount,
+        khash_t(mesh_visited) *visited);
+static int64_t clew_mesh_node_neighbours_count (struct clew_mesh_node *mnode, int64_t mcount);
 static void clew_mesh_node_destroy (struct clew_mesh_node *mnode);
 
 static void clew_node_destroy (struct clew_node *node);
@@ -484,11 +505,6 @@ static int tags_expression_match_has (void *context, uint32_t tag)
         return (pos == UINT64_MAX) ? 0 : 1;
 }
 
-static inline double parse_tag_fix_length_value_clamp_nonnegative (double x)
-{
-        return (x < 0.0) ? 0.0 : x;
-}
-
 static uint32_t parse_tag_fix_length_value (const char *v_raw)
 {
         const char *v = v_raw;
@@ -518,7 +534,7 @@ static uint32_t parse_tag_fix_length_value (const char *v_raw)
                 }
 
                 meters = (feet * 0.3048) + (inches * 0.0254);
-                return (uint32_t) round(parse_tag_fix_length_value_clamp_nonnegative(meters));
+                return (uint32_t) round((meters < 0.0) ? 0.0 : meters);
         }
 
         // 2. Handle suffix units: "2 m", "0.6 mi", etc.
@@ -538,7 +554,7 @@ static uint32_t parse_tag_fix_length_value (const char *v_raw)
                 return UINT32_MAX;
         }
 
-        return (uint32_t) round(parse_tag_fix_length_value_clamp_nonnegative(meters));
+        return (uint32_t) round((meters < 0.0) ? 0.0 : meters);
 }
 
 static void parse_tag_fix_length (char *k, char *v)
@@ -656,7 +672,7 @@ static int input_callback_select_node_start (struct clew_input *input, void *con
 
         clew_stack_reset(&clew->read_tags);
 
-        if (clew->options.keep_nodes == 0) {
+        if ((clew->read_keep & CLEW_READ_STATE_NODE) == 0) {
                 goto skip;
         }
 
@@ -718,7 +734,7 @@ static int input_callback_select_way_start (struct clew_input *input, void *cont
         clew_stack_reset(&clew->read_tags);
         clew_stack_reset(&clew->read_refs);
 
-        if (clew->options.keep_ways == 0) {
+        if ((clew->read_keep & CLEW_READ_STATE_WAY) == 0) {
                 goto skip;
         }
 
@@ -794,7 +810,7 @@ static int input_callback_select_relation_start (struct clew_input *input, void 
         clew_stack_reset(&clew->read_tags);
         clew_stack_reset(&clew->read_refs);
 
-        if (clew->options.keep_relations == 0) {
+        if ((clew->read_keep & CLEW_READ_STATE_RELATION) == 0) {
                 goto skip;
         }
 
@@ -842,14 +858,9 @@ static int input_callback_select_tag_start (struct clew_input *input, void *cont
 
         (void) input;
 
-        switch (clew_stack_peek_uint32(&clew->read_state)) {
-                case CLEW_READ_STATE_NODE:
-                case CLEW_READ_STATE_WAY:
-                case CLEW_READ_STATE_RELATION:
-                        break;
-                default:
-                       clew_errorf("read_state is invalid, %d != %d || %d || %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_NODE, CLEW_READ_STATE_WAY, CLEW_READ_STATE_RELATION);
-                        goto bail;
+        if ((clew_stack_peek_uint32(&clew->read_state) & (CLEW_READ_STATE_NODE | CLEW_READ_STATE_WAY | CLEW_READ_STATE_RELATION)) == 0) {
+                clew_errorf("read_state is invalid, %d != %d | %d | %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_NODE, CLEW_READ_STATE_WAY, CLEW_READ_STATE_RELATION);
+                goto bail;
         }
         clew_stack_push_uint32(&clew->read_state, CLEW_READ_STATE_TAG);
 
@@ -1052,14 +1063,9 @@ static int input_callback_select_id (struct clew_input *input, void *context, ui
 
         (void) input;
 
-        switch (clew_stack_peek_uint32(&clew->read_state)) {
-                case CLEW_READ_STATE_NODE:
-                case CLEW_READ_STATE_WAY:
-                case CLEW_READ_STATE_RELATION:
-                        break;
-                default:
-                       clew_errorf("read_state is invalid, %d != %d || %d || %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_NODE, CLEW_READ_STATE_WAY, CLEW_READ_STATE_RELATION);
-                        goto bail;
+        if ((clew_stack_peek_uint32(&clew->read_state) & (CLEW_READ_STATE_NODE | CLEW_READ_STATE_WAY | CLEW_READ_STATE_RELATION)) == 0) {
+                clew_errorf("read_state is invalid, %d != %d | %d | %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_NODE, CLEW_READ_STATE_WAY, CLEW_READ_STATE_RELATION);
+                goto bail;
         }
 
         clew->read_id = id;
@@ -1109,14 +1115,9 @@ static int input_callback_select_ref (struct clew_input *input, void *context, u
 
         (void) input;
 
-        switch (clew_stack_peek_uint32(&clew->read_state)) {
-                case CLEW_READ_STATE_ND:
-                case CLEW_READ_STATE_MEMBER:
-                case CLEW_READ_STATE_RELATION:
-                        break;
-                default:
-                       clew_errorf("read_state is invalid, %d != %d || %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_ND, CLEW_READ_STATE_MEMBER);
-                        goto bail;
+        if ((clew_stack_peek_uint32(&clew->read_state) & (CLEW_READ_STATE_ND | CLEW_READ_STATE_MEMBER | CLEW_READ_STATE_RELATION)) == 0) {
+                clew_errorf("read_state is invalid, %d != %d || %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_ND, CLEW_READ_STATE_MEMBER);
+                goto bail;
         }
 
         rc = clew_stack_push_uint64(&clew->read_refs, ref);
@@ -1427,7 +1428,7 @@ static int input_callback_extract_relation_start (struct clew_input *input, void
         clew_stack_reset(&clew->read_tags);
         clew_stack_reset(&clew->read_refs);
 
-        if (clew->options.keep_relations == 0) {
+        if ((clew->read_keep & CLEW_READ_STATE_RELATION) == 0) {
                 goto skip;
         }
 
@@ -1471,40 +1472,23 @@ bail:   return -1;
 
 static int input_callback_extract_tag_start (struct clew_input *input, void *context)
 {
+        int read_state;
         struct clew *clew = context;
 
         (void) input;
 
-        switch (clew_stack_peek_uint32(&clew->read_state)) {
-                case CLEW_READ_STATE_NODE:
-                case CLEW_READ_STATE_WAY:
-                case CLEW_READ_STATE_RELATION:
-                        break;
-                default:
-                       clew_errorf("read_state is invalid, %d != %d || %d || %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_NODE, CLEW_READ_STATE_WAY, CLEW_READ_STATE_RELATION);
-                        goto bail;
+        read_state = clew_stack_peek_uint32(&clew->read_state);
+        if ((read_state & (CLEW_READ_STATE_NODE | CLEW_READ_STATE_WAY | CLEW_READ_STATE_RELATION)) == 0) {
+                clew_errorf("read_state is invalid, %d != %d | %d | %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_NODE, CLEW_READ_STATE_WAY, CLEW_READ_STATE_RELATION);
+                goto bail;
         }
         clew_stack_push_uint32(&clew->read_state, CLEW_READ_STATE_TAG);
 
         clew->read_tag_k[0] = '\0';
         clew->read_tag_v[0] = '\0';
 
-        switch (clew_stack_peek_uint32(&clew->read_state)) {
-                case CLEW_READ_STATE_NODE:
-                        if (clew->options.keep_nodes == 0) {
-                                goto skip;
-                        }
-                        break;
-                case CLEW_READ_STATE_WAY:
-                        if (clew->options.keep_nodes == 0) {
-                                goto skip;
-                        }
-                        break;
-                case CLEW_READ_STATE_RELATION:
-                        if (clew->options.keep_nodes == 0) {
-                                goto skip;
-                        }
-                        break;
+        if ((clew->read_keep & read_state) == 0) {
+                goto skip;
         }
 
         return 0;
@@ -1704,14 +1688,9 @@ static int input_callback_extract_id (struct clew_input *input, void *context, u
 
         (void) input;
 
-        switch (clew_stack_peek_uint32(&clew->read_state)) {
-                case CLEW_READ_STATE_NODE:
-                case CLEW_READ_STATE_WAY:
-                case CLEW_READ_STATE_RELATION:
-                        break;
-                default:
-                       clew_errorf("read_state is invalid, %d != %d || %d || %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_NODE, CLEW_READ_STATE_WAY, CLEW_READ_STATE_RELATION);
-                        goto bail;
+        if ((clew_stack_peek_uint32(&clew->read_state) & (CLEW_READ_STATE_NODE | CLEW_READ_STATE_WAY | CLEW_READ_STATE_RELATION)) == 0) {
+                clew_errorf("read_state is invalid, %d != %d | %d | %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_NODE, CLEW_READ_STATE_WAY, CLEW_READ_STATE_RELATION);
+                goto bail;
         }
 
         clew->read_id = id;
@@ -1761,14 +1740,9 @@ static int input_callback_extract_ref (struct clew_input *input, void *context, 
 
         (void) input;
 
-        switch (clew_stack_peek_uint32(&clew->read_state)) {
-                case CLEW_READ_STATE_ND:
-                case CLEW_READ_STATE_MEMBER:
-                case CLEW_READ_STATE_RELATION:
-                        break;
-                default:
-                       clew_errorf("read_state is invalid, %d != %d || %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_ND, CLEW_READ_STATE_MEMBER);
-                        goto bail;
+        if ((clew_stack_peek_uint32(&clew->read_state) & (CLEW_READ_STATE_ND | CLEW_READ_STATE_MEMBER | CLEW_READ_STATE_RELATION)) == 0) {
+                clew_errorf("read_state is invalid, %d != %d | %d | %d", clew_stack_peek_uint32(&clew->read_state), CLEW_READ_STATE_ND, CLEW_READ_STATE_MEMBER, CLEW_READ_STATE_RELATION);
+                goto bail;
         }
 
         rc = clew_stack_push_uint64(&clew->read_refs, ref);
@@ -1907,8 +1881,8 @@ static int mesh_node_pqueue_compare (const void *a, const void *b)
 {
         const struct clew_mesh_node *t1 = (const struct clew_mesh_node *) a;
         const struct clew_mesh_node *t2 = (const struct clew_mesh_node *) b;
-        if (t1->pqueue_cost < t2->pqueue_cost) return -1;
         if (t1->pqueue_cost > t2->pqueue_cost) return 1;
+        //if (t1->pqueue_cost < t2->pqueue_cost) return -1;
         return 0;
 }
 
@@ -1930,8 +1904,6 @@ static void mesh_solution_stack_destroy_element (void *context, void *elem)
         (void) context;
         clew_stack_uninit(&msolution->mesh_nodes);
 }
-
-KHASH_SET_INIT_INT64(mesh_visited);
 
 static int64_t clew_mesh_node_neighbours_count_depth (
         struct clew_mesh_node *mnode,
@@ -1984,6 +1956,7 @@ static int64_t clew_mesh_node_neighbours_count (struct clew_mesh_node *mnode, in
         kh_destroy(mesh_visited, visited);
         return result;
 }
+
 static void clew_mesh_node_destroy (struct clew_mesh_node *mnode)
 {
         clew_stack_uninit(&mnode->mesh_ways);
@@ -2250,15 +2223,6 @@ int main (int argc, char *argv[])
                         case OPTION_KEEP_RELATIONS:
                                 clew->options.keep_relations = !!atoi(optarg);
                                 break;
-                        case OPTION_DROP_NODES:
-                                clew->options.keep_nodes = !atoi(optarg);
-                                break;
-                        case OPTION_DROP_WAYS:
-                                clew->options.keep_ways = !atoi(optarg);
-                                break;
-                        case OPTION_DROP_RELATIONS:
-                                clew->options.keep_relations = !atoi(optarg);
-                                break;
                 }
         }
 
@@ -2461,6 +2425,9 @@ int main (int argc, char *argv[])
 
         clew_stack_reset(&clew->read_state);
         clew_stack_push_uint32(&clew->read_state, CLEW_READ_STATE_UNKNOWN);
+        clew->read_keep |= clew->options.keep_nodes     ? CLEW_READ_STATE_NODE     : 0;
+        clew->read_keep |= clew->options.keep_ways      ? CLEW_READ_STATE_WAY      : 0;
+        clew->read_keep |= clew->options.keep_relations ? CLEW_READ_STATE_RELATION : 0;
 
         clew->read_node_start     = 0;
         clew->read_way_start      = 0;
@@ -2513,10 +2480,13 @@ int main (int argc, char *argv[])
                                 goto bail;
                         }
                 }
-
-                if (input != NULL) {
+                rc = clew_input_get_error(input);
+                if (rc != 0) {
+                        clew_errorf("input error occured, error: %d", rc);
                         clew_input_destroy(input);
+                        goto bail;
                 }
+                clew_input_destroy(input);
         }
 
         clew_infof("  processed");
@@ -2587,10 +2557,13 @@ int main (int argc, char *argv[])
                                 goto bail;
                         }
                 }
-
-                if (input != NULL) {
+                rc = clew_input_get_error(input);
+                if (rc != 0) {
+                        clew_errorf("input error occured, error: %d", rc);
                         clew_input_destroy(input);
+                        goto bail;
                 }
+                clew_input_destroy(input);
         }
 
         clew_infof("  processed");

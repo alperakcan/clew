@@ -289,6 +289,7 @@ static int clew_input_backend_callback_tag_start (struct clew_input_backend *bac
                 goto bail;
         }
 
+        rc = 0;
         if (input->callback_tag_start != NULL) {
                 rc = input->callback_tag_start(input, input->callback_context);
                 if (rc < 0) {
@@ -297,7 +298,7 @@ static int clew_input_backend_callback_tag_start (struct clew_input_backend *bac
                 }
         }
 
-        return 0;
+        return rc;
 bail:   return -1;
 }
 
@@ -940,6 +941,6 @@ int clew_input_get_error (struct clew_input *input)
                 clew_errorf("input is invalid");
                 goto bail;
         }
-        return 0;
+        return input->error;
 bail:   return -1;
 }
