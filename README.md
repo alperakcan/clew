@@ -3,80 +3,37 @@ Clew is a semi-optimal route planning tool for adventure motor touring — (aka:
 
 # usage
 
-```
-clew usage:
-  --input              / -i : input path
-  --output             / -o: output path
-  --clip-path          / -c: clip path, ex: lon1,lat1 lon2,lat2 ... (default: "")
-  --clip-bound             : clip bound, ex: minlon,minlat,maxlon,maxlat (default: "")
-  --clip-offset            : clip offset in meters (default: 0)
-  --filter             / -f: filter expression (default: "")
-  --points             / -p: points to visit, ex: lon1,lat1 lon2,lat2 ... (default: "")
-  --keep-nodes         / -n: filter nodes (default: 0)
-  --keep-ways          / -w: filter ways (default: 0)
-  --keep-relations     / -r: filter relations (default: 0)
-  --keep-tags          / -k: keep tag (default: "")
-  --keep-tags-node         : keep node tag (default: "")
-  --keep-tags-way          : keep way tag (default: "")
-  --keep-tags-relation     : keep relation tag (default: "")
-```
+    CLEW_MIMALLOC_ENABLE=n \
+    make && \
+    ./dist/bin/clew \
+      -i ../patika-maps/europe-latest-clipped-100000-highways.osm.pbf \
+      -o o \
+      -f "highway_*" \
+      --keep-tags-node "" \
+      --keep-tags-way "highway_* or tunnel_* or bridge_* or toll_* or oneway_*" \
+      --keep-tags-relation "" \
+      --keep-nodes 0 \
+      --keep-ways 1 \
+      --keep-relations 0 \
+      -p "12.1358000,46.5405000 12.0855000,46.6945000 12.8428000,47.0401000 12.8333000,47.0833000 12.1697000,47.2075000 10.6949850,46.3496280 10.4846264,46.3434911 10.3699000,46.4670000 10.4522814,46.5284730 10.5445347,46.5950134 10.5138764,46.8286048 10.1357000,46.5386000 8.5698617,46.5464946 8.4104009,46.5718475 7.9071000,46.5930000 7.9106000,46.5621000 8.4464581,46.7295143 8.5956753,46.6376523 8.3706713,46.4772018 7.1973672,45.9025618 7.0305294,45.4177072 6.4076548,45.0641193 9.3301869,46.5060171 6.6364000,45.6925000 8.8758000,46.8778000 10.2983079,46.2479261" \
+      -c 100000
 
-```
-clew usage:
+    osmium extract \
+      --progress \
+      -b 5.1359257,44.1658040,14.1608461,48.1058152 \
+      -s smart \
+      -o europe-latest-clipped-100000m.osm.pbf \
+      europe-latest.osm.pbf \
 
-  --input              / -i : input path
-  --output             / -o: output path
-  --expression         / -e: filter expression
-  --keep-nodes         / -n: filter nodes (default: 0)
-  --keep-ways          / -w: filter ways (default: 0)
-  --keep-relations     / -r: filter relations (default: 0)
-  --keep-tag               : keep tag (default: 0)
-  --keep-tag-node          : keep node tag (default: 0)
-  --keep-tag-way           : keep way tag (default: 0)
-  --keep-tag-relation      : keep relation tag (default: 0)
+    osmium tags-filter \
+      --progress \
+      -o europe-latest-clipped-100000-highways.osm.pbf \
+      europe-latest-clipped-100000.osm.pbf \
+      nwr/highway r/restriction
 
-example:
-
-  clew --input input.osm.pbf --output output.pgx --expression expression
-  clew --input input.osm.pbf --output output.pgx --expression highway_*
-  clew --input input.osm.pbf --output output.pgx
-    --keep_ways 1
-    --expression "highway_motorway or highway_motorway_link or highway_trunk or highway_trunk_link or highway_primary"
-    --keep-tag highway_motorway --keep-tag highway_motorway_link
-    --keep-tag highway_trunk --keep-tag highway_trunk_link
-    --keep-tag highway_primary
-
-roads:
-  highway_motorway    : A restricted access major divided highway, normally with 2 or more running lanes plus emergency hard shoulder. Equivalent to the Freeway, Autobahn, etc..
-  highway_trunk       : The most important roads in a country's system that aren't motorways. (Need not necessarily be a divided highway.
-  highway_primary     : The next most important roads in a country's system. (Often link larger towns.)
-  highway_secondary   : The next most important roads in a country's system. (Often link towns.)
-  highway_tertiary    : The next most important roads in a country's system. (Often link smaller towns and villages)
-  highway_unclassified: The least important through roads in a country's system – i.e. minor roads of a lower classification than tertiary, but which serve a purpose other than access to properties. (Often link villages and hamlets.)
-  highway_residential : Roads which serve as an access to housing, without function of connecting settlements. Often lined with housing.
-
-link roads:
-  highway_motorway_link : The link roads (sliproads/ramps) leading to/from a motorway from/to a motorway or lower class highway. Normally with the same motorway restrictions.
-  highway_trunk_link    : The link roads (sliproads/ramps) leading to/from a trunk road from/to a trunk road or lower class highway.
-  highway_primary_link  : The link roads (sliproads/ramps) leading to/from a primary road from/to a primary road or lower class highway.
-  highway_secondary_link: The link roads (sliproads/ramps) leading to/from a secondary road from/to a secondary road or lower class highway.
-  highway_tertiary_link : The link roads (sliproads/ramps) leading to/from a tertiary road from/to a tertiary road or lower class highway.
-
-special road types:
-  highway_living_street: For living streets, which are residential streets where pedestrians have legal priority over cars, speeds are kept very low.
-  highway_service      : For access roads to, or within an industrial estate, camp site, business park, car park, alleys, etc.
-  highway_pedestrian   : For roads used mainly/exclusively for pedestrians in shopping and some residential areas which may allow access by motorised vehicles only for very limited periods of the day.
-  highway_track        : Roads for mostly agricultural or forestry uses.
-  highway_bus_guideway : A busway where the vehicle guided by the way (though not a railway) and is not suitable for other traffic.
-  highway_escape       : For runaway truck ramps, runaway truck lanes, emergency escape ramps, or truck arrester beds.
-  highway_raceway      : A course or track for (motor) racing
-  highway_road         : A road/way/street/motorway/etc. of unknown type. It can stand for anything ranging from a footpath to a motorway.
-  highway_bus_way      : A dedicated roadway for bus rapid transit systems
-paths:
-  highway_footway      : For designated footpaths; i.e., mainly/exclusively for pedestrians. This includes walking tracks and gravel paths.
-  highway_bridleway    : For horse riders. Pedestrians are usually also permitted, cyclists may be permitted depending on local rules/laws. Motor vehicles are forbidden.
-  highway_steps        : For flights of steps (stairs) on footways.
-  highway_corridor     : For a hallway inside of a building.
-  highway_path         : A non-specific path.
-  highway_via_ferrata  : A via ferrata is a route equipped with fixed cables, stemples, ladders, and bridges in order to increase ease and security for climbers.
-```
+    ogr2ogr -f KML output-waypoints.kml output.gpx waypoints
+    ogr2ogr -f KML output-tracks.kml output.gpx tracks
+    ogr2ogr -f KML output.kml output-waypoints.kml
+    ogr2ogr -f KML -append output.kml output-tracks.kml
+    ogr2ogr -f KMLSUPEROVERLAY output.kmz output.kml
+    zip -j output.kmz output.kml
