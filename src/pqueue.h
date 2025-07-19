@@ -1,6 +1,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct clew_pqueue;
 
 struct clew_pqueue * clew_pqueue_create (
@@ -21,3 +25,7 @@ void * clew_pqueue_peek (struct clew_pqueue *head);
 void * clew_pqueue_pop (struct clew_pqueue *head);
 int clew_pqueue_search (struct clew_pqueue *head, void *key, int (*callback) (void *context, void *entry), void *context);
 int clew_pqueue_traverse (struct clew_pqueue *head, int (*callback) (void *context, void *entry), void *context);
+
+#ifdef __cplusplus
+}
+#endif

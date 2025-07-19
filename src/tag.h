@@ -1,6 +1,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum {
         clew_tag_unknown      = 0,
 
@@ -1447,3 +1451,7 @@ uint32_t * clew_tags_group_maxspeed (void);
 
 void clew_tag_init (void);
 void clew_tag_fini (void);
+
+#ifdef __cplusplus
+}
+#endif

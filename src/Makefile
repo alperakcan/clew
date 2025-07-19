@@ -28,7 +28,8 @@ clew_files-y += \
 	pqueue.c \
 	expression.c \
 	tag.c \
-	main.c \
+	projection-mercator.c \
+	main.cpp
 
 clew_includes-y += \
 	${CLEW_3RDPARTY_INSTALL_PATH}/usr/local/include
@@ -51,6 +52,7 @@ clew_cxxflags-y += \
 
 clew_ldflags-y += \
 	-lprotobuf-c \
+	-lClipper2 \
 	-lz \
 	-lm
 

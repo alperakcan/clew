@@ -1,4 +1,8 @@
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct clew_input;
 
 enum {
@@ -62,3 +66,7 @@ int clew_input_read (struct clew_input *input);
 int clew_input_reset (struct clew_input *input);
 
 int clew_input_get_error (struct clew_input *input);
+
+#ifdef __cplusplus
+}
+#endif

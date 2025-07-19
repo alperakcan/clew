@@ -3,6 +3,10 @@
 #include <stdint.h>
 #include <string.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define likely(x)               __builtin_expect(!!(x), 1)
 #define unlikely(x)             __builtin_expect(!!(x), 0)
 
@@ -366,7 +370,7 @@ static inline void clew_stack_uninit (struct clew_stack *stack)
         static inline uint64_t clew_stack_search_ ## name (const struct clew_stack *stack, type key)            \
         {                                                                                                       \
                 uint8_t *elem;                                                                                  \
-                elem = clew_stack_search(stack, &key, clew_stack_compare_ ## name);                             \
+                elem = (uint8_t *) clew_stack_search(stack, &key, clew_stack_compare_ ## name);                             \
                 return (elem == NULL) ? UINT64_MAX : ((elem - stack->buffer) / stack->size);                    \
         }
 
@@ -376,4 +380,7 @@ CLEW_STACK_API_FOR_TYPE(uint32, uint32_t)
 CLEW_STACK_API_FOR_TYPE(uint64, uint64_t)
 CLEW_STACK_API_FOR_TYPE(double4, float)
 CLEW_STACK_API_FOR_TYPE(double8, double)
-CLEW_STACK_API_FOR_TYPE(ptr, void *)
+
+#ifdef __cplusplus
+}
+#endif

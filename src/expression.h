@@ -1,6 +1,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct clew_expression;
 
 struct clew_expression * clew_expression_create (const char *expression);
@@ -19,3 +23,7 @@ int clew_expression_match (
 
 int clew_expression_has (const struct clew_expression *expression, uint32_t tag);
 int clew_expression_count (const struct clew_expression *expression);
+
+#ifdef __cplusplus
+}
+#endif

@@ -1,4 +1,8 @@
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct clew_input_backend;
 
 struct clew_input_backend_init_options {
@@ -53,3 +57,7 @@ struct clew_input_backend {
         int (*reset) (struct clew_input_backend *backend);
         void (*destroy) (struct clew_input_backend *backend);
 };
+
+#ifdef __cplusplus
+}
+#endif

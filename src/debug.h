@@ -2,6 +2,10 @@
 #if !defined(CLEW_DEBUG_H)
 #define CLEW_DEBUG_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #if !defined(CLEW_DEBUG_NAME)
 #define CLEW_DEBUG_NAME        "unknown"
 #endif
@@ -83,5 +87,9 @@ int clew_debug_printf (unsigned int level, const char *name, const char *functio
 
 void clew_debug_lock (void);
 void clew_debug_unlock (void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

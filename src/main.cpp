@@ -8,6 +8,8 @@
 #include <ctype.h>
 #include <time.h>
 
+#include <clipper2/clipper.h>
+
 #define CLEW_DEBUG_NAME                 "main"
 #include "debug.h"
 #include "input.h"
@@ -18,6 +20,7 @@
 #include "khash.h"
 #include "pqueue.h"
 #include "expression.h"
+#include "projection-mercator.h"
 #include "tag.h"
 
 #define OPTION_HELP                     'h'
@@ -188,6 +191,7 @@ struct clew_mesh_node {
 };
 
 struct clew_mesh_point {
+        uint64_t id;
         int32_t lon;
         int32_t lat;
         double nearest_distance;
@@ -500,7 +504,7 @@ static void print_help (const char *pname)
 static int tags_expression_match_has (void *context, uint32_t tag)
 {
         uint64_t pos;
-        struct clew_stack *tags = context;
+        struct clew_stack *tags = (struct clew_stack *) context;
         pos = clew_stack_search_uint32(tags, tag);
         return (pos == UINT64_MAX) ? 0 : 1;
 }
@@ -623,7 +627,7 @@ static void parse_tag_fix (char *k, char *v)
 
 static int input_callback_select_bounds_start (struct clew_input *input, void *context)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -639,7 +643,7 @@ bail:   return -1;
 
 static int input_callback_select_bounds_end (struct clew_input *input, void *context)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -655,7 +659,7 @@ bail:   return -1;
 
 static int input_callback_select_node_start (struct clew_input *input, void *context)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -685,7 +689,7 @@ static int input_callback_select_node_end (struct clew_input *input, void *conte
 {
         int rc;
         int match;
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -716,7 +720,7 @@ bail:   return -1;
 
 static int input_callback_select_way_start (struct clew_input *input, void *context)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -752,7 +756,7 @@ static int input_callback_select_way_end (struct clew_input *input, void *contex
         uint64_t il;
         uint64_t ref;
 
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -792,7 +796,7 @@ bail:   return -1;
 
 static int input_callback_select_relation_start (struct clew_input *input, void *context)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -823,7 +827,7 @@ static int input_callback_select_relation_end (struct clew_input *input, void *c
 {
         int rc;
         int match;
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -854,7 +858,7 @@ bail:   return -1;
 
 static int input_callback_select_tag_start (struct clew_input *input, void *context)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -879,7 +883,7 @@ static int input_callback_select_tag_end (struct clew_input *input, void *contex
         int sl;
         uint32_t tag;
 
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -931,7 +935,7 @@ bail:   return -1;
 
 static int input_callback_select_nd_start (struct clew_input *input, void *context)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -947,7 +951,7 @@ bail:   return -1;
 
 static int input_callback_select_nd_end (struct clew_input *input, void *context)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -963,7 +967,7 @@ bail:   return -1;
 
 static int input_callback_select_member_start (struct clew_input *input, void *context)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -979,7 +983,7 @@ bail:   return -1;
 
 static int input_callback_select_member_end (struct clew_input *input, void *context)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -995,7 +999,7 @@ bail:   return -1;
 
 static int input_callback_select_minlon (struct clew_input *input, void *context, int32_t lon)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
         (void) lon;
@@ -1011,7 +1015,7 @@ bail:   return -1;
 
 static int input_callback_select_minlat (struct clew_input *input, void *context, int32_t lat)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
         (void) lat;
@@ -1027,7 +1031,7 @@ bail:   return -1;
 
 static int input_callback_select_maxlon (struct clew_input *input, void *context, int32_t lon)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
         (void) lon;
@@ -1043,7 +1047,7 @@ bail:   return -1;
 
 static int input_callback_select_maxlat (struct clew_input *input, void *context, int32_t lat)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
         (void) lat;
@@ -1059,7 +1063,7 @@ bail:   return -1;
 
 static int input_callback_select_id (struct clew_input *input, void *context, uint64_t id)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1076,7 +1080,7 @@ bail:   return -1;
 
 static int input_callback_select_lon (struct clew_input *input, void *context, int32_t lon)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1093,7 +1097,7 @@ bail:   return -1;
 
 static int input_callback_select_lat (struct clew_input *input, void *context, int32_t lat)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1111,7 +1115,7 @@ bail:   return -1;
 static int input_callback_select_ref (struct clew_input *input, void *context, uint64_t ref)
 {
         int rc;
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1132,7 +1136,7 @@ bail:   return -1;
 
 static int input_callback_select_type (struct clew_input *input, void *context, const char *type)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
         (void) type;
@@ -1148,7 +1152,7 @@ bail:   return -1;
 
 static int input_callback_select_role (struct clew_input *input, void *context, const char *role)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
         (void) role;
@@ -1164,7 +1168,7 @@ bail:   return -1;
 
 static int input_callback_select_k (struct clew_input *input, void *context, const char *k)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1182,7 +1186,7 @@ bail:   return -1;
 
 static int input_callback_select_v (struct clew_input *input, void *context, const char *v)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1200,7 +1204,7 @@ bail:   return -1;
 
 static int input_callback_select_error (struct clew_input *input, void *context, unsigned int reason)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
         (void) input;
         (void) clew;
         (void) reason;
@@ -1209,7 +1213,7 @@ static int input_callback_select_error (struct clew_input *input, void *context,
 
 static int input_callback_extract_bounds_start (struct clew_input *input, void *context)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1225,7 +1229,7 @@ bail:   return -1;
 
 static int input_callback_extract_bounds_end (struct clew_input *input, void *context)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1241,7 +1245,7 @@ bail:   return -1;
 
 static int input_callback_extract_node_start (struct clew_input *input, void *context)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1267,7 +1271,7 @@ static int input_callback_extract_node_end (struct clew_input *input, void *cont
         int rc;
         struct clew_node *node;
 
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1285,7 +1289,7 @@ static int input_callback_extract_node_end (struct clew_input *input, void *cont
                 goto out;
         }
 
-        node = malloc(sizeof(struct clew_node));
+        node = (struct clew_node *) malloc(sizeof(struct clew_node));
         if (node == NULL) {
                 clew_errorf("can not allocate memory");
                 goto bail;
@@ -1298,7 +1302,7 @@ static int input_callback_extract_node_end (struct clew_input *input, void *cont
 
         node->ntags = clew_stack_count(&clew->read_tags);
         if (node->ntags > 0) {
-                node->tags  = malloc(sizeof(uint32_t) * node->ntags);
+                node->tags  = (uint32_t *) malloc(sizeof(uint32_t) * node->ntags);
                 if (node->tags == NULL) {
                         clew_errorf("can not allocate memory");
                         goto bail;
@@ -1306,7 +1310,7 @@ static int input_callback_extract_node_end (struct clew_input *input, void *cont
                 memcpy(node->tags, clew_stack_buffer(&clew->read_tags), sizeof(uint32_t) * node->ntags);
         }
 
-        rc = clew_stack_push_ptr(&clew->nodes, node);
+        rc = clew_stack_push(&clew->nodes, &node);
         if (rc < 0) {
                 clew_errorf("can not push node");
                 clew_node_destroy(node);
@@ -1319,7 +1323,7 @@ bail:   return -1;
 
 static int input_callback_extract_way_start (struct clew_input *input, void *context)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1346,7 +1350,7 @@ static int input_callback_extract_way_end (struct clew_input *input, void *conte
         int rc;
         struct clew_way *way;
 
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1366,7 +1370,7 @@ static int input_callback_extract_way_end (struct clew_input *input, void *conte
                 goto out;
         }
 
-        way = malloc(sizeof(struct clew_way));
+        way = (struct clew_way *) malloc(sizeof(struct clew_way));
         if (way == NULL) {
                 clew_errorf("can not allocate memory");
                 goto bail;
@@ -1377,7 +1381,7 @@ static int input_callback_extract_way_end (struct clew_input *input, void *conte
 
         way->ntags = clew_stack_count(&clew->read_tags);
         if (way->ntags > 0) {
-                way->tags  = malloc(sizeof(uint32_t) * way->ntags);
+                way->tags  = (uint32_t *) malloc(sizeof(uint32_t) * way->ntags);
                 if (way->tags == NULL) {
                         clew_errorf("can not allocate memory");
                         goto bail;
@@ -1387,7 +1391,7 @@ static int input_callback_extract_way_end (struct clew_input *input, void *conte
 
         way->nrefs = clew_stack_count(&clew->read_refs);
         if (way->nrefs > 0) {
-                way->refs  = malloc(sizeof(uint64_t) * way->nrefs);
+                way->refs  = (uint64_t *) malloc(sizeof(uint64_t) * way->nrefs);
                 if (way->refs == NULL) {
                         clew_errorf("can not allocate memory");
                         goto bail;
@@ -1395,7 +1399,7 @@ static int input_callback_extract_way_end (struct clew_input *input, void *conte
                 memcpy(way->refs, clew_stack_buffer(&clew->read_refs), sizeof(uint64_t) * way->nrefs);
         }
 
-        rc = clew_stack_push_ptr(&clew->ways, way);
+        rc = clew_stack_push(&clew->ways, &way);
         if (rc < 0) {
                 clew_errorf("can not push way");
                 goto bail;
@@ -1410,7 +1414,7 @@ bail:   if (way != NULL) {
 
 static int input_callback_extract_relation_start (struct clew_input *input, void *context)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1441,7 +1445,7 @@ static int input_callback_extract_relation_end (struct clew_input *input, void *
 {
         int rc;
         int match;
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1473,7 +1477,7 @@ bail:   return -1;
 static int input_callback_extract_tag_start (struct clew_input *input, void *context)
 {
         int read_state;
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1504,7 +1508,7 @@ static int input_callback_extract_tag_end (struct clew_input *input, void *conte
         int sl;
         uint32_t tag;
 
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1556,7 +1560,7 @@ bail:   return -1;
 
 static int input_callback_extract_nd_start (struct clew_input *input, void *context)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1572,7 +1576,7 @@ bail:   return -1;
 
 static int input_callback_extract_nd_end (struct clew_input *input, void *context)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1588,7 +1592,7 @@ bail:   return -1;
 
 static int input_callback_extract_member_start (struct clew_input *input, void *context)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1604,7 +1608,7 @@ bail:   return -1;
 
 static int input_callback_extract_member_end (struct clew_input *input, void *context)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1620,7 +1624,7 @@ bail:   return -1;
 
 static int input_callback_extract_minlon (struct clew_input *input, void *context, int32_t lon)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
         (void) lon;
@@ -1636,7 +1640,7 @@ bail:   return -1;
 
 static int input_callback_extract_minlat (struct clew_input *input, void *context, int32_t lat)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
         (void) lat;
@@ -1652,7 +1656,7 @@ bail:   return -1;
 
 static int input_callback_extract_maxlon (struct clew_input *input, void *context, int32_t lon)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
         (void) lon;
@@ -1668,7 +1672,7 @@ bail:   return -1;
 
 static int input_callback_extract_maxlat (struct clew_input *input, void *context, int32_t lat)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
         (void) lat;
@@ -1684,7 +1688,7 @@ bail:   return -1;
 
 static int input_callback_extract_id (struct clew_input *input, void *context, uint64_t id)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1701,7 +1705,7 @@ bail:   return -1;
 
 static int input_callback_extract_lon (struct clew_input *input, void *context, int32_t lon)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1718,7 +1722,7 @@ bail:   return -1;
 
 static int input_callback_extract_lat (struct clew_input *input, void *context, int32_t lat)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1736,7 +1740,7 @@ bail:   return -1;
 static int input_callback_extract_ref (struct clew_input *input, void *context, uint64_t ref)
 {
         int rc;
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1757,7 +1761,7 @@ bail:   return -1;
 
 static int input_callback_extract_type (struct clew_input *input, void *context, const char *type)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
         (void) type;
@@ -1773,7 +1777,7 @@ bail:   return -1;
 
 static int input_callback_extract_role (struct clew_input *input, void *context, const char *role)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
         (void) role;
@@ -1789,7 +1793,7 @@ bail:   return -1;
 
 static int input_callback_extract_k (struct clew_input *input, void *context, const char *k)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1807,7 +1811,7 @@ bail:   return -1;
 
 static int input_callback_extract_v (struct clew_input *input, void *context, const char *v)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
 
         (void) input;
 
@@ -1825,7 +1829,7 @@ bail:   return -1;
 
 static int input_callback_extract_error (struct clew_input *input, void *context, unsigned int reason)
 {
-        struct clew *clew = context;
+        struct clew *clew = (struct clew *) context;
         (void) input;
         (void) clew;
         (void) reason;
@@ -2055,7 +2059,7 @@ int main (int argc, char *argv[])
         clew_debug_init();
         clew_tag_init();
 
-        clew = malloc(sizeof(struct clew));
+        clew = (struct clew *) malloc(sizeof(struct clew));
         if (clew == NULL) {
                 clew_errorf("can not allocate memory");
                 goto bail;
@@ -2329,6 +2333,9 @@ int main (int argc, char *argv[])
                                 struct clew_point epoint;
                                 struct clew_point spoint;
                                 struct clew_point wpoint;
+                                Clipper2Lib::Path64 bpath;
+                                Clipper2Lib::Paths64 bpaths;
+                                Clipper2Lib::Paths64 bpaths_unioned;
 
                                 if (clew_stack_count(&clew->options.clip_path) != 0) {
                                         clew_errorf("clip path is already set");
@@ -2344,31 +2351,52 @@ int main (int argc, char *argv[])
                                 bound = clew_bound_null();
                                 for (i = 0, il = clew_stack_count(&clew->options.points); i < il; i += 2) {
                                         point = clew_point_init(clew_stack_at_int32(&clew->options.points, i + 0), clew_stack_at_int32(&clew->options.points, i + 1));
+
                                         npoint = clew_point_derived_position(&point, offset, 0);
                                         epoint = clew_point_derived_position(&point, offset, 90);
                                         spoint = clew_point_derived_position(&point, offset, 180);
                                         wpoint = clew_point_derived_position(&point, offset, 270);
+
                                         bound = clew_bound_union_point(&bound, &npoint);
                                         bound = clew_bound_union_point(&bound, &epoint);
                                         bound = clew_bound_union_point(&bound, &spoint);
                                         bound = clew_bound_union_point(&bound, &wpoint);
                                 }
 
-                                clew_stack_push_int32(&clew->options.clip_path, bound.minlon);
-                                clew_stack_push_int32(&clew->options.clip_path, bound.minlat);
+                                if (1) {
+                                        for (i = 0, il = clew_stack_count(&clew->options.points); i < il; i += 2) {
+                                                point = clew_point_init(clew_stack_at_int32(&clew->options.points, i + 0), clew_stack_at_int32(&clew->options.points, i + 1));
+                                                bpath.emplace_back(clew_projection_mercator_convert_lon(point.lon), clew_projection_mercator_convert_lat(point.lat));
+                                        }
+                                        bpaths.emplace_back(bpath);
+                                        bpaths = Clipper2Lib::InflatePaths(bpaths, offset, Clipper2Lib::JoinType::Square, Clipper2Lib::EndType::Square);
+                                        bpaths = Clipper2Lib::SimplifyPaths(bpaths, 0.025);
+                                        bpaths = Clipper2Lib::Union(bpaths, Clipper2Lib::FillRule::Positive);
+                                        bpaths = Clipper2Lib::SimplifyPaths(bpaths, 0.025);
+                                        for (i = 0, il = bpaths.size(); i < il; i++) {
+                                                for (j = 0, jl = bpaths[i].size(); j < jl; j++) {
+                                                        clew_stack_push_int32(&clew->options.clip_path, clew_projection_mercator_invert_lon(bpaths[i][j].x));
+                                                        clew_stack_push_int32(&clew->options.clip_path, clew_projection_mercator_invert_lat(bpaths[i][j].y));
+                                                }
+                                                clew_stack_push_int32(&clew->options.clip_path, clew_projection_mercator_invert_lon(bpaths[i][0].x));
+                                                clew_stack_push_int32(&clew->options.clip_path, clew_projection_mercator_invert_lat(bpaths[i][0].y));
+                                        }
+                                } else {
+                                        clew_stack_push_int32(&clew->options.clip_path, bound.minlon);
+                                        clew_stack_push_int32(&clew->options.clip_path, bound.minlat);
 
-                                clew_stack_push_int32(&clew->options.clip_path, bound.maxlon);
-                                clew_stack_push_int32(&clew->options.clip_path, bound.minlat);
+                                        clew_stack_push_int32(&clew->options.clip_path, bound.maxlon);
+                                        clew_stack_push_int32(&clew->options.clip_path, bound.minlat);
 
-                                clew_stack_push_int32(&clew->options.clip_path, bound.maxlon);
-                                clew_stack_push_int32(&clew->options.clip_path, bound.maxlat);
+                                        clew_stack_push_int32(&clew->options.clip_path, bound.maxlon);
+                                        clew_stack_push_int32(&clew->options.clip_path, bound.maxlat);
 
-                                clew_stack_push_int32(&clew->options.clip_path, bound.minlon);
-                                clew_stack_push_int32(&clew->options.clip_path, bound.maxlat);
+                                        clew_stack_push_int32(&clew->options.clip_path, bound.minlon);
+                                        clew_stack_push_int32(&clew->options.clip_path, bound.maxlat);
 
-                                clew_stack_push_int32(&clew->options.clip_path, bound.minlon);
-                                clew_stack_push_int32(&clew->options.clip_path, bound.minlat);
-
+                                        clew_stack_push_int32(&clew->options.clip_path, bound.minlon);
+                                        clew_stack_push_int32(&clew->options.clip_path, bound.minlat);
+                                }
                         }       break;
                         case OPTION_CLIP_STRATEGY:
                                 clew->options.clip_strategy = clew_clip_strategy_value(optarg);
@@ -2598,7 +2626,7 @@ int main (int argc, char *argv[])
                 mway.oneway   = clew_tag_oneway_no;
                 mway.maxspeed = clew_tag_maxspeed_20;
 
-                way = clew_stack_at_ptr(&clew->ways, w);
+                way = *(struct clew_way **) clew_stack_at(&clew->ways, w);
 
                 for (i = 0, il = sizeof(clew_mesh_way_types) / sizeof(clew_mesh_way_types[0]); i < il; i++) {
                         for (t = 0, tl = way->ntags; t < tl; t++) {
@@ -2664,7 +2692,7 @@ int main (int argc, char *argv[])
                 struct clew_mesh_node_neighbour *mnodeneigh;
                 struct clew_mesh_node_neighbour _mnodeneigh;
 
-                mway = clew_stack_at(&clew->mesh_ways, w);
+                mway = (struct clew_mesh_way *) clew_stack_at(&clew->mesh_ways, w);
                 way  = mway->way;
 
                 pmnode = NULL;
@@ -2678,7 +2706,7 @@ int main (int argc, char *argv[])
                         kmnode->node->id = node->id;
                         k = kh_get(mesh_nodes, clew->mesh_nodes, kmnode->node->id);
                         if (k == kh_end(clew->mesh_nodes)) {
-                                mnode = malloc(sizeof(struct clew_mesh_node));
+                                mnode = (struct clew_mesh_node *) malloc(sizeof(struct clew_mesh_node));
                                 if (mnode == NULL) {
                                         clew_errorf("can not allocate memory");
                                         goto bail;
@@ -2790,7 +2818,7 @@ int main (int argc, char *argv[])
 
                         npoint = clew_point_init(mnode->node->lon, mnode->node->lat);
                         if (clew_bound_invalid(&sbound) ||
-                                clew_bound_contains_point(&sbound, &npoint)) {
+                            clew_bound_contains_point(&sbound, &npoint)) {
                                 distance = clew_point_distance_euclidean(&spoint, &npoint);
                                 if (distance < sdistance) {
 #if 1
@@ -2824,6 +2852,7 @@ int main (int argc, char *argv[])
 
                 {
                         struct clew_mesh_point mpoint;
+                        mpoint.id  = i / 2;
                         mpoint.lon = clew_stack_at_int32(&clew->options.points, i + 0);
                         mpoint.lat = clew_stack_at_int32(&clew->options.points, i + 1);
                         mpoint.nearest_distance = sdistance;
@@ -2846,13 +2875,13 @@ int main (int argc, char *argv[])
 
                 double pqueue_ocost;
                 struct clew_pqueue *pqueue;
-                struct clew_mesh_point *mpoint = clew_stack_at(&clew->mesh_points, i);
+                struct clew_mesh_point *mpoint = (struct clew_mesh_point *) clew_stack_at(&clew->mesh_points, i);
 
                 clew_infof("  %ld: %.7f,%.7f", i, mpoint->lon * 1e-7, mpoint->lat * 1e-7);
                 clew_infof("    nearest: %ld, %.3f meters", mpoint->nearest_node->node->id, mpoint->nearest_distance);
 
                 for (j = 0, jl = clew_stack_count(&clew->mesh_points); j < jl; j++) {
-                        struct clew_mesh_point *nmpoint = clew_stack_at(&clew->mesh_points, j);
+                        struct clew_mesh_point *nmpoint = (struct clew_mesh_point *) clew_stack_at(&clew->mesh_points, j);
                         nmpoint->_solved = 0;
                 }
 
@@ -2892,13 +2921,13 @@ int main (int argc, char *argv[])
                         pqueue_ocost = mpoint->nearest_node->pqueue_cost;
                         mpoint->nearest_node->pqueue_cost = 0;
                         clew_pqueue_mod(pqueue, mpoint->nearest_node, pqueue_ocost > mpoint->nearest_node->pqueue_cost);
-                        while ((rnode = clew_pqueue_pop(pqueue)) != NULL) {
+                        while ((rnode = (struct clew_mesh_node *) clew_pqueue_pop(pqueue)) != NULL) {
                                 if (rnode->pqueue_cost == INFINITY) {
                                         clew_infof("      there are unsolved points");
                                         break;
                                 }
                                 for (j = 0, jl = clew_stack_count(&clew->mesh_points); j < jl; j++) {
-                                        struct clew_mesh_point *nmpoint = clew_stack_at(&clew->mesh_points, j);
+                                        struct clew_mesh_point *nmpoint = (struct clew_mesh_point *) clew_stack_at(&clew->mesh_points, j);
                                         if (mpoint == nmpoint) {
                                                 continue;
                                         }
@@ -2958,7 +2987,7 @@ int main (int argc, char *argv[])
                                         }
                                 }
                                 for (j = 0, jl = clew_stack_count(&clew->mesh_points); j < jl; j++) {
-                                        struct clew_mesh_point *nmpoint = clew_stack_at(&clew->mesh_points, j);
+                                        struct clew_mesh_point *nmpoint = (struct clew_mesh_point *) clew_stack_at(&clew->mesh_points, j);
                                         if (mpoint == nmpoint) {
                                                 continue;
                                         }
@@ -2984,7 +3013,7 @@ int main (int argc, char *argv[])
                                 }
                         }
                         for (j = 0, jl = clew_stack_count(&clew->mesh_points); j < jl; j++) {
-                                struct clew_mesh_point *nmpoint = clew_stack_at(&clew->mesh_points, j);
+                                struct clew_mesh_point *nmpoint = (struct clew_mesh_point *) clew_stack_at(&clew->mesh_points, j);
                                 if (mpoint == nmpoint) {
                                         continue;
                                 }
@@ -2998,53 +3027,67 @@ int main (int argc, char *argv[])
         }
 
         clew_infof("writing solutions");
+        {
+                FILE *fp = fopen("output.gpx", "w+b");
 
-        FILE *fp = fopen("output.gpx", "w+b");
+                fprintf(fp, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+                fprintf(fp, "<gpx version=\"1.1\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n");
 
-        fprintf(fp, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        fprintf(fp, "<gpx version=\"1.1\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n");
-
-        for (i = 0, il = clew_stack_count(&clew->mesh_points); i < il; i++) {
-                struct clew_mesh_point *mpoint = clew_stack_at(&clew->mesh_points, i);
-                fprintf(fp, " <wpt lon=\"%.7f\" lat=\"%.7f\">\n", mpoint->lon * 1e-7, mpoint->lat * 1e-7);
-                fprintf(fp, "  <name>point %ld</name>\n", i);
-                fprintf(fp, " </wpt>\n");
-        }
-
-        for (i = 0, il = clew_stack_count(&clew->mesh_solutions); i < il; i++) {
-                struct clew_mesh_solution *msolution = clew_stack_at(&clew->mesh_solutions, i);
-                clew_infof("  %.7f,%.7f -> %.7f,%.7f",
-                        msolution->source->lon * 1e-7, msolution->source->lat * 1e-7,
-                        msolution->destination->lon * 1e-7, msolution->destination->lat * 1e-7);
-
-                time_t ts    = (time_t) msolution->duration;
-                struct tm *tm = gmtime(&ts);
-                char duration[80];
-                strftime(duration, sizeof(duration), "%H:%M:%S", tm);
-
-                clew_infof("    distance: %.3f meters", msolution->distance);
-                clew_infof("    duration: %s, %.3f seconds", duration, msolution->duration);
-                clew_infof("    cost    : %.3f", msolution->cost);
-                clew_infof("    nodes   : %ld", clew_stack_count(&msolution->mesh_nodes));
-
-                fprintf(fp, " <trk>\n");
-                fprintf(fp, "  <name>%.7f,%.7f -> %.7f,%.7f</name>\n",
-                        msolution->source->lon * 1e-7, msolution->source->lat * 1e-7,
-                        msolution->destination->lon * 1e-7, msolution->destination->lat * 1e-7);
-                fprintf(fp, "  <desc>distance=%.3fm duration=%.1fs cost=%.3f</desc>\n",
-                        msolution->distance, msolution->duration, msolution->cost);
-                fprintf(fp, "  <trkseg>\n");
-                for (j = 0, jl = clew_stack_count(&msolution->mesh_nodes); j < jl; j++) {
-                        struct clew_mesh_node *mnode = *(struct clew_mesh_node **) clew_stack_at(&msolution->mesh_nodes, j);
-                        fprintf(fp, "   <trkpt lon=\"%.7f\" lat=\"%.7f\"/>\n", mnode->node->lon * 1e-7, mnode->node->lat * 1e-7);
+                for (i = 0, il = clew_stack_count(&clew->mesh_points); i < il; i++) {
+                        struct clew_mesh_point *mpoint = (struct clew_mesh_point *) clew_stack_at(&clew->mesh_points, i);
+                        fprintf(fp, " <wpt lon=\"%.7f\" lat=\"%.7f\">\n", mpoint->lon * 1e-7, mpoint->lat * 1e-7);
+                        fprintf(fp, "  <name>point %ld</name>\n", i);
+                        fprintf(fp, " </wpt>\n");
                 }
-                fprintf(fp, "  </trkseg>\n");
-                fprintf(fp, " </trk>\n");
+
+                {
+                        fprintf(fp, " <trk>\n");
+                        fprintf(fp, "  <name>Clip Path</name>\n");
+                        fprintf(fp, "  <trkseg>\n");
+                        for (i = 0, il = clew_stack_count(&clew->options.clip_path); i < il; i += 2) {
+                                fprintf(fp, "   <trkpt lon=\"%.7f\" lat=\"%.7f\"/>", clew_stack_at_int32(&clew->options.clip_path, i + 0) / 1e7, clew_stack_at_int32(&clew->options.clip_path, i + 1) / 1e7);
+                        }
+                        fprintf(fp, "  </trkseg>\n");
+                        fprintf(fp, " </trk>\n");
+                }
+
+                for (i = 0, il = clew_stack_count(&clew->mesh_solutions); i < il; i++) {
+                        struct clew_mesh_solution *msolution = (struct clew_mesh_solution *) clew_stack_at(&clew->mesh_solutions, i);
+                        clew_infof("  %.7f,%.7f -> %.7f,%.7f",
+                                msolution->source->lon * 1e-7, msolution->source->lat * 1e-7,
+                                msolution->destination->lon * 1e-7, msolution->destination->lat * 1e-7);
+
+                        time_t ts    = (time_t) msolution->duration;
+                        struct tm *tm = gmtime(&ts);
+                        char duration[80];
+                        strftime(duration, sizeof(duration), "%H:%M:%S", tm);
+
+                        clew_infof("    distance: %.3f meters", msolution->distance);
+                        clew_infof("    duration: %s, %.3f seconds", duration, msolution->duration);
+                        clew_infof("    cost    : %.3f", msolution->cost);
+                        clew_infof("    nodes   : %ld", clew_stack_count(&msolution->mesh_nodes));
+
+                        fprintf(fp, " <trk>\n");
+                        fprintf(fp, "  <name>From: %ld (%.7f,%.7f) To: %ld (%.7f,%.7f)</name>\n",
+                                msolution->source->id,
+                                msolution->source->lon * 1e-7, msolution->source->lat * 1e-7,
+                                msolution->destination->id,
+                                msolution->destination->lon * 1e-7, msolution->destination->lat * 1e-7);
+                        fprintf(fp, "  <desc>distance=%.3fm duration=%.1fs cost=%.3f</desc>\n",
+                                msolution->distance, msolution->duration, msolution->cost);
+                        fprintf(fp, "  <trkseg>\n");
+                        for (j = 0, jl = clew_stack_count(&msolution->mesh_nodes); j < jl; j++) {
+                                struct clew_mesh_node *mnode = *(struct clew_mesh_node **) clew_stack_at(&msolution->mesh_nodes, j);
+                                fprintf(fp, "   <trkpt lon=\"%.7f\" lat=\"%.7f\"/>\n", mnode->node->lon * 1e-7, mnode->node->lat * 1e-7);
+                        }
+                        fprintf(fp, "  </trkseg>\n");
+                        fprintf(fp, " </trk>\n");
+                }
+
+                fprintf(fp, "</gpx>\n");
+
+                fclose(fp);
         }
-
-        fprintf(fp, "</gpx>\n");
-
-        fclose(fp);
 
 out:
         if (clew != NULL) {

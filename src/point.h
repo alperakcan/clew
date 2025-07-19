@@ -5,6 +5,10 @@
 #include <stdint.h>
 #include <math.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #if !defined(CLEW_POINT_FORMAT)
 #define CLEW_POINT_FORMAT               "%.7f, %.7f"
 #endif
@@ -103,33 +107,36 @@ static inline __attribute__ ((warn_unused_result)) double clew_point_distance_eu
 
 static inline struct clew_point clew_point_derived_position (const struct clew_point *a, double range, double bearing)
 {
-        static const double earthRadius = 6378137.0;
-        static const double degreesToRadians = M_PI / 180.0;
-        static const double radiansToDegrees = 180.0 / M_PI;
+    static const double R = 6378137.0; // WGS-84 Earth radius
+    static const double degreesToRadians = M_PI / 180.0;
+    static const double radiansToDegrees = 180.0 / M_PI;
 
-        double latA = a->lat * 1e-7 * degreesToRadians;
-        double lonA = a->lon * 1e-7 * degreesToRadians;
-        double angularDistance = range / earthRadius;
-        double trueCourse = bearing * degreesToRadians;
+    double lat1 = a->lat * 1e-7 * degreesToRadians;
+    double lon1 = a->lon * 1e-7 * degreesToRadians;
+    double brng = bearing * degreesToRadians;
+    double d = range;
 
-        double lat = asin(
-            sin(latA) * cos(angularDistance) +
-            cos(latA) * sin(angularDistance) * cos(trueCourse));
+    double dLat = d * cos(brng) / R;
+    double lat2 = lat1 + dLat;
 
-        double dlon = atan2(
-            sin(trueCourse) * sin(angularDistance) * cos(latA),
-            cos(angularDistance) - sin(latA) * sin(lat));
+    // Handle nearly constant latitude for E/W movement
+    double dPhi = log(tan(lat2 / 2 + M_PI / 4) / tan(lat1 / 2 + M_PI / 4));
+    double q = (fabs(dPhi) > 1e-12) ? (dLat / dPhi) : cos(lat1); // avoid div-by-zero
+    double dLon = d * sin(brng) / (R * q);
+    double lon2 = lon1 + dLon;
 
-        double lon = fmod(lonA + dlon + M_PI, M_PI * 2);
-        if (lon < 0) {
-                lon += 2 * M_PI;
-        }
-        lon -= M_PI;
+    // Normalize
+    if (lon2 > M_PI) lon2 -= 2 * M_PI;
+    if (lon2 < -M_PI) lon2 += 2 * M_PI;
 
-        return (struct clew_point) {
-                .lon = (int32_t) (lon * radiansToDegrees * 1e7),
-                .lat = (int32_t) (lat * radiansToDegrees * 1e7)
-        };
+    return (struct clew_point) {
+        .lon = (int32_t)(lon2 * radiansToDegrees * 1e7),
+        .lat = (int32_t)(lat2 * radiansToDegrees * 1e7)
+    };
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

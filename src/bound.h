@@ -2,6 +2,10 @@
 #include <stdint.h>
 #include "point.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #if !defined(MIN)
 #define MIN(a, b)                       (((a) < (b)) ? (a) : (b))
 #endif
@@ -238,3 +242,7 @@ static inline __attribute__ ((warn_unused_result)) struct clew_bound clew_bound_
         e.maxlat = MAX(a->minlat - enlarge, a->maxlat + enlarge);
         return e;
 }
+
+#ifdef __cplusplus
+}
+#endif

@@ -3,6 +3,10 @@
 #include <stdint.h>
 #include <string.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define likely(x)       __builtin_expect(!!(x), 1)
 #define unlikely(x)     __builtin_expect(!!(x), 0)
 
@@ -222,6 +226,8 @@ static inline int clew_bitmap_foreach(const struct clew_bitmap *bitmap, int (*ca
                 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0
         };
 
+        uint64_t bytes;
+
         if (unlikely(bitmap == NULL)) {
                 goto bail;
         }
@@ -229,7 +235,7 @@ static inline int clew_bitmap_foreach(const struct clew_bitmap *bitmap, int (*ca
                 goto bail;
         }
 
-        uint64_t bytes = (bitmap->avail + 7) / 8;
+        bytes = (bitmap->avail + 7) / 8;
         for (uint64_t i = 0; i < bytes; ++i) {
                 uint8_t byte = bitmap->buffer[i];
 
@@ -256,4 +262,8 @@ out:    return 0;
 bail:   return -1;
 }
 
+#endif
+
+#ifdef __cplusplus
+}
 #endif
