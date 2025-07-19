@@ -2444,6 +2444,64 @@ int main (int argc, char *argv[])
         clew_infof("  keep-keep_ways     : %d", clew->options.keep_ways);
         clew_infof("  keep-keep_relations: %d", clew->options.keep_relations);
 
+        {
+                FILE *fp = fopen("output-points.gpx", "w+b");
+
+                fprintf(fp, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+                fprintf(fp, "<gpx version=\"1.1\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n");
+
+                for (i = 0, il = clew_stack_count(&clew->mesh_points); i < il; i++) {
+                        struct clew_mesh_point *mpoint = (struct clew_mesh_point *) clew_stack_at(&clew->mesh_points, i);
+                        fprintf(fp, " <wpt lon=\"%.7f\" lat=\"%.7f\">\n", mpoint->lon * 1e-7, mpoint->lat * 1e-7);
+                        fprintf(fp, "  <name>point %ld</name>\n", i);
+                        fprintf(fp, " </wpt>\n");
+                }
+
+                fprintf(fp, "</gpx>\n");
+
+                fclose(fp);
+        }
+
+        {
+                FILE *fp = fopen("output-clip.gpx", "w+b");
+
+                fprintf(fp, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+                fprintf(fp, "<gpx version=\"1.1\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n");
+
+                fprintf(fp, " <trk>\n");
+                fprintf(fp, "  <name>clip path</name>\n");
+                fprintf(fp, "  <trkseg>\n");
+                for (i = 0, il = clew_stack_count(&clew->options.clip_path); i < il; i += 2) {
+                        fprintf(fp, "   <trkpt lon=\"%.7f\" lat=\"%.7f\"/>\n", clew_stack_at_int32(&clew->options.clip_path, i + 0) / 1e7, clew_stack_at_int32(&clew->options.clip_path, i + 1) / 1e7);
+                }
+                fprintf(fp, "  </trkseg>\n");
+                fprintf(fp, " </trk>\n");
+
+                fprintf(fp, "</gpx>\n");
+
+                fclose(fp);
+        }
+        {
+                FILE *fp = fopen("output-clip.geojson", "w+b");
+
+                fprintf(fp, "{\n");
+                fprintf(fp, " \"type\": \"FeatureCollection\",\n");
+                fprintf(fp, " \"features\": [{\n");
+                fprintf(fp, "  \"type\": \"Feature\",\n");
+                fprintf(fp, "  \"geometry\": {\n");
+                fprintf(fp, "   \"type\": \"Polygon\",\n");
+                fprintf(fp, "   \"coordinates\": [[\n");
+                for (i = 0, il = clew_stack_count(&clew->options.clip_path); i < il; i += 2) {
+                        fprintf(fp, "    [%.7f, %.7f],\n", clew_stack_at_int32(&clew->options.clip_path, i + 0) / 1e7, clew_stack_at_int32(&clew->options.clip_path, i + 1) / 1e7);
+                }
+                fprintf(fp, "   ]]\n");
+                fprintf(fp, "  }\n");
+                fprintf(fp, " }]\n");
+                fprintf(fp, "}\n");
+
+                fclose(fp);
+        }
+
         clew_infof("selecting");
         clew->state = CLEW_STATE_SELECT;
 
@@ -3028,7 +3086,7 @@ int main (int argc, char *argv[])
 
         clew_infof("writing solutions");
         {
-                FILE *fp = fopen("output.gpx", "w+b");
+                FILE *fp = fopen("output-solution.gpx", "w+b");
 
                 fprintf(fp, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
                 fprintf(fp, "<gpx version=\"1.1\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n");
@@ -3042,10 +3100,10 @@ int main (int argc, char *argv[])
 
                 {
                         fprintf(fp, " <trk>\n");
-                        fprintf(fp, "  <name>Clip Path</name>\n");
+                        fprintf(fp, "  <name>clip path</name>\n");
                         fprintf(fp, "  <trkseg>\n");
                         for (i = 0, il = clew_stack_count(&clew->options.clip_path); i < il; i += 2) {
-                                fprintf(fp, "   <trkpt lon=\"%.7f\" lat=\"%.7f\"/>", clew_stack_at_int32(&clew->options.clip_path, i + 0) / 1e7, clew_stack_at_int32(&clew->options.clip_path, i + 1) / 1e7);
+                                fprintf(fp, "   <trkpt lon=\"%.7f\" lat=\"%.7f\"/>\n", clew_stack_at_int32(&clew->options.clip_path, i + 0) / 1e7, clew_stack_at_int32(&clew->options.clip_path, i + 1) / 1e7);
                         }
                         fprintf(fp, "  </trkseg>\n");
                         fprintf(fp, " </trk>\n");
@@ -3068,7 +3126,7 @@ int main (int argc, char *argv[])
                         clew_infof("    nodes   : %ld", clew_stack_count(&msolution->mesh_nodes));
 
                         fprintf(fp, " <trk>\n");
-                        fprintf(fp, "  <name>From: %ld (%.7f,%.7f) To: %ld (%.7f,%.7f)</name>\n",
+                        fprintf(fp, "  <name>from: %ld (%.7f,%.7f) to: %ld (%.7f,%.7f)</name>\n",
                                 msolution->source->id,
                                 msolution->source->lon * 1e-7, msolution->source->lat * 1e-7,
                                 msolution->destination->id,
