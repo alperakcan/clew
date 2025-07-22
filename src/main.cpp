@@ -2025,6 +2025,336 @@ static int clew_clip_strategy_value (const char *strategy)
         return CLEW_CLIP_STRATEGY_UNKNOWN;
 }
 
+#include <vector>
+#include <limits>
+#include <algorithm>
+#include <random>
+#include <cmath>
+
+class TSPSolver {
+private:
+        std::vector<std::vector<double>> cost_matrix;
+        int n_points;
+        static constexpr double INFINITY_COST = std::numeric_limits<double>::infinity();
+
+public:
+        TSPSolver(const std::vector<std::vector<double>>& matrix)
+                : cost_matrix(matrix), n_points(matrix.size()) {}
+
+        bool is_valid() {
+                return validate_matrix();
+        }
+
+        bool validate_matrix() {
+                // Check if the problem is solvable
+                for (int i = 0; i < n_points; i++) {
+                        bool has_outgoing = false;
+                        bool has_incoming = false;
+
+                        for (int j = 0; j < n_points; j++) {
+                                if (i != j) {
+                                        if (!std::isinf(cost_matrix[i][j])) has_outgoing = true;
+                                        if (!std::isinf(cost_matrix[j][i])) has_incoming = true;
+                                }
+                        }
+
+                        if (!has_outgoing || !has_incoming) {
+                                return false;
+                        }
+                }
+                return true;
+        }
+
+        bool is_valid_edge(int from, int to) const {
+                return from != to && !std::isinf(cost_matrix[from][to]);
+        }
+
+        // Result structure
+        struct TSPResult {
+                std::vector<int> tour;
+                double total_cost;
+                std::string method;
+                bool success;
+                std::string error_message;
+
+                TSPResult() : total_cost(0.0), success(false) {}
+        };
+
+        // Nearest Neighbor heuristic
+        TSPResult nearest_neighbor(int start_point = 0) {
+                TSPResult result;
+                result.method = "nearest_neighbor";
+
+                if (!validate_matrix()) {
+                        result.error_message = "Invalid matrix - some points are unreachable";
+                        return result;
+                }
+
+                if (start_point < 0 || start_point >= n_points) {
+                        result.error_message = "Invalid start point: " + std::to_string(start_point);
+                        return result;
+                }
+
+                std::vector<bool> visited(n_points, false);
+                double total_cost = 0.0;
+
+                int current = start_point;
+                result.tour.push_back(current);
+                visited[current] = true;
+
+                for (int i = 1; i < n_points; i++) {
+                        int nearest = -1;
+                        double min_cost = INFINITY_COST;
+
+                        for (int j = 0; j < n_points; j++) {
+                                if (!visited[j] && is_valid_edge(current, j) &&
+                                    cost_matrix[current][j] < min_cost) {
+                                        min_cost = cost_matrix[current][j];
+                                        nearest = j;
+                                }
+                        }
+
+                        if (nearest == -1) {
+                                result.error_message = "No valid path found from point " + std::to_string(current);
+                                return result;
+                        }
+
+                        result.tour.push_back(nearest);
+                        visited[nearest] = true;
+                        total_cost += min_cost;
+                        current = nearest;
+                }
+
+                // Return to start - check if path exists
+                if (!is_valid_edge(current, start_point)) {
+                        result.error_message = "Cannot return to start point from " + std::to_string(current);
+                        return result;
+                }
+
+                total_cost += cost_matrix[current][start_point];
+                result.tour.push_back(start_point);
+                result.total_cost = total_cost;
+                result.success = true;
+
+                return result;
+        }
+
+        // 2-opt improvement
+        TSPResult two_opt_improve(const TSPResult& initial_solution) {
+                TSPResult result;
+                result.method = "2opt_improved_" + initial_solution.method;
+
+                if (!initial_solution.success) {
+                        result.error_message = "Cannot improve invalid initial solution: " + initial_solution.error_message;
+                        return result;
+                }
+
+                std::vector<int> tour = initial_solution.tour;
+                //double best_cost = initial_solution.total_cost;
+                bool improved = true;
+
+                // Remove the return to start for easier manipulation
+                if (tour.back() == tour.front()) {
+                        tour.pop_back();
+                }
+
+                while (improved) {
+                        improved = false;
+
+                        for (size_t i = 1; i < tour.size() - 1; i++) {
+                                for (size_t j = i + 1; j < tour.size(); j++) {
+                                        // Calculate current cost of edges (i-1,i) and (j,j+1)
+                                        int prev_i = (i - 1 + tour.size()) % tour.size();
+                                        int next_j = (j + 1) % tour.size();
+
+                                        // Only proceed if all edges in current configuration are valid
+                                        if (!is_valid_edge(tour[prev_i], tour[i]) ||
+                                            !is_valid_edge(tour[j], tour[next_j])) {
+                                                continue;
+                                        }
+
+                                        double current_cost = cost_matrix[tour[prev_i]][tour[i]] +
+                                                            cost_matrix[tour[j]][tour[next_j]];
+
+                                        // Check if new edges would be valid
+                                        if (!is_valid_edge(tour[prev_i], tour[j]) ||
+                                            !is_valid_edge(tour[i], tour[next_j])) {
+                                                continue;
+                                        }
+
+                                        // Calculate cost after 2-opt swap: (i-1,j) and (i,j+1)
+                                        double new_cost = cost_matrix[tour[prev_i]][tour[j]] +
+                                                        cost_matrix[tour[i]][tour[next_j]];
+
+                                        if (new_cost < current_cost) {
+                                                // Perform 2-opt swap
+                                                std::reverse(tour.begin() + i, tour.begin() + j + 1);
+                                                improved = true;
+                                                break;
+                                        }
+                                }
+                                if (improved) break;
+                        }
+                }
+
+                // Calculate final cost and add return to start
+                double final_cost = 0.0;
+                for (size_t i = 0; i < tour.size(); i++) {
+                        int next = (i + 1) % tour.size();
+                        if (!is_valid_edge(tour[i], tour[next])) {
+                                result.error_message = "Invalid tour generated during 2-opt improvement";
+                                return result;
+                        }
+                        final_cost += cost_matrix[tour[i]][tour[next]];
+                }
+
+                // Add return to start point for complete tour
+                tour.push_back(tour[0]);
+
+                result.tour = tour;
+                result.total_cost = final_cost;
+                result.success = true;
+                return result;
+        }
+
+        // Multi-start nearest neighbor with 2-opt
+        TSPResult solve_multi_start(int num_starts = -1) {
+                TSPResult best_result;
+                best_result.total_cost = INFINITY_COST;
+
+                if (num_starts <= 0) num_starts = std::min(n_points, 10);
+
+                for (int start = 0; start < num_starts; start++) {
+                        TSPResult nn_result = nearest_neighbor(start);
+                        if (!nn_result.success) {
+                                if (best_result.error_message.empty()) {
+                                        best_result.error_message = nn_result.error_message;
+                                }
+                                continue;
+                        }
+
+                        TSPResult improved = two_opt_improve(nn_result);
+                        if (!improved.success) {
+                                continue;
+                        }
+
+                        if (improved.total_cost < best_result.total_cost) {
+                                best_result = improved;
+                        }
+                }
+
+                if (best_result.total_cost == INFINITY_COST && best_result.error_message.empty()) {
+                        best_result.error_message = "No valid solution found from any starting point";
+                }
+
+                return best_result;
+        }
+
+        // Christofides algorithm (simplified version)
+        TSPResult christofides() {
+                // This is a simplified implementation
+                // For production, you'd want a proper MST and perfect matching implementation
+
+                // Start with nearest neighbor from multiple points
+                TSPResult best = solve_multi_start(n_points / 2);
+
+                // Apply additional 2-opt passes
+                bool improved = true;
+                int passes = 0;
+                const int max_passes = 5;
+
+                while (improved && passes < max_passes) {
+                        TSPResult previous = best;
+                        best = two_opt_improve(best);
+                        improved = (best.total_cost < previous.total_cost);
+                        passes++;
+                }
+
+                best.method = "christofides_approx";
+                return best;
+        }
+
+        // Simulated Annealing
+        TSPResult simulated_annealing(double initial_temp = 1000.0,
+                                     double cooling_rate = 0.995,
+                                     int max_iterations = 10000) {
+                // Start with nearest neighbor solution
+                TSPResult current = nearest_neighbor(0);
+                TSPResult best = current;
+
+                std::random_device rd;
+                std::mt19937 gen(rd());
+                std::uniform_real_distribution<> dis(0.0, 1.0);
+                std::uniform_int_distribution<> city_dis(1, n_points - 2); // Exclude start/end
+
+                double temperature = initial_temp;
+
+                for (int iter = 0; iter < max_iterations; iter++) {
+                        // Create neighbor solution by swapping two random cities
+                        TSPResult neighbor = current;
+                        int i = city_dis(gen);
+                        int j = city_dis(gen);
+                        if (i != j) {
+                                std::swap(neighbor.tour[i], neighbor.tour[j]);
+
+                                // Recalculate cost
+                                neighbor.total_cost = 0.0;
+                                for (size_t k = 0; k < neighbor.tour.size() - 1; k++) {
+                                        neighbor.total_cost += cost_matrix[neighbor.tour[k]][neighbor.tour[k + 1]];
+                                }
+                        }
+
+                        double delta = neighbor.total_cost - current.total_cost;
+
+                        if (delta < 0 || dis(gen) < exp(-delta / temperature)) {
+                                current = neighbor;
+                                if (current.total_cost < best.total_cost) {
+                                        best = current;
+                                }
+                        }
+
+                        temperature *= cooling_rate;
+                }
+
+                best.method = "simulated_annealing";
+                return best;
+        }
+
+        // Solve using the best general approach
+        TSPResult solve() {
+                // For 25 points, multi-start with 2-opt is usually best
+                TSPResult result = solve_multi_start();
+                if (!result.success) {
+                        return result;
+                }
+
+                // Try simulated annealing if we have time and a valid initial solution
+                TSPResult sa_result = simulated_annealing();
+                if (sa_result.success && sa_result.total_cost < result.total_cost) {
+                        result = sa_result;
+                }
+
+                return result;
+        }
+
+        // Utility: Print tour
+        void print_tour(const TSPResult& result) {
+                if (!result.success) {
+                        std::cout << "Failed to find solution: " << result.error_message << std::endl;
+                        return;
+                }
+
+                std::cout << "Method: " << result.method << std::endl;
+                std::cout << "Total Cost: " << result.total_cost << std::endl;
+                std::cout << "Tour: ";
+                for (size_t i = 0; i < result.tour.size(); i++) {
+                        std::cout << result.tour[i];
+                        if (i < result.tour.size() - 1) std::cout << " -> ";
+                }
+                std::cout << std::endl;
+        }
+};
+
 int main (int argc, char *argv[])
 {
         int c;
@@ -2450,10 +2780,9 @@ int main (int argc, char *argv[])
                 fprintf(fp, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
                 fprintf(fp, "<gpx version=\"1.1\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n");
 
-                for (i = 0, il = clew_stack_count(&clew->mesh_points); i < il; i++) {
-                        struct clew_mesh_point *mpoint = (struct clew_mesh_point *) clew_stack_at(&clew->mesh_points, i);
-                        fprintf(fp, " <wpt lon=\"%.7f\" lat=\"%.7f\">\n", mpoint->lon * 1e-7, mpoint->lat * 1e-7);
-                        fprintf(fp, "  <name>point %ld</name>\n", i);
+                for (i = 0, il = clew_stack_count(&clew->options.points); i < il; i += 2) {
+                        fprintf(fp, " <wpt lon=\"%.7f\" lat=\"%.7f\">\n", clew_stack_at_int32(&clew->options.points, i + 0) / 1e7, clew_stack_at_int32(&clew->options.points, i + 1) / 1e7);
+                        fprintf(fp, "  <name>point %ld</name>\n", i / 2);
                         fprintf(fp, " </wpt>\n");
                 }
 
@@ -3010,7 +3339,7 @@ int main (int argc, char *argv[])
                                                 char duration[80];
                                                 strftime(duration, sizeof(duration), "%H:%M:%S", tm);
 
-                                                clew_infof("      %2ld: distance: %10.3f, duration: %s, cost: %.3f", j, rnode->pqueue_distance, duration, rnode->pqueue_cost);
+                                                clew_infof("      %2ld: distance: %10.3f, duration: %s, cost: %10.3f", j, rnode->pqueue_distance, duration, rnode->pqueue_cost);
 
                                                 uint64_t nprnode;
                                                 uint64_t tprnode;
@@ -3084,9 +3413,9 @@ int main (int argc, char *argv[])
                 clew_pqueue_destroy(pqueue);
         }
 
-        clew_infof("writing solutions");
+        clew_infof("writing routes");
         {
-                FILE *fp = fopen("output-solution.gpx", "w+b");
+                FILE *fp = fopen("output-routes.gpx", "w+b");
 
                 fprintf(fp, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
                 fprintf(fp, "<gpx version=\"1.1\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n");
@@ -3145,6 +3474,105 @@ int main (int argc, char *argv[])
                 fprintf(fp, "</gpx>\n");
 
                 fclose(fp);
+        }
+
+        {
+                int64_t npoints;
+                std::vector<std::vector<double>> tcosts;
+
+                npoints = clew_stack_count(&clew->mesh_points);
+                tcosts.resize(npoints);
+                for (i = 0, il = npoints; i < il; i++) {
+                        tcosts[i].resize(npoints);
+                        for (j = 0, jl = npoints; j < jl; j++) {
+                                tcosts[i][j] = (i == j ? 0 : std::numeric_limits<double>::infinity());
+                        }
+                }
+
+                for (i = 0, il = clew_stack_count(&clew->mesh_solutions); i < il; i++) {
+                        struct clew_mesh_solution *msolution = (struct clew_mesh_solution *) clew_stack_at(&clew->mesh_solutions, i);
+                        tcosts[msolution->source->id][msolution->destination->id] = msolution->cost;
+                }
+
+                TSPSolver solver(tcosts);
+                TSPSolver::TSPResult result = solver.solve();
+                if (!solver.is_valid()) {
+                        std::cout << "TSP matrix validation failed - some points are unreachable" << std::endl;
+                } else {
+                        TSPSolver::TSPResult result = solver.solve();
+                        if (!result.success) {
+                                std::cout << "TSP solving failed: " << result.error_message << std::endl;
+                        } else {
+                                clew_infof("TSP solution found with cost: %f using method: %s", result.total_cost, result.method.c_str());
+
+                                // Create optimized route by finding the actual route segments
+                                std::vector<struct clew_mesh_solution *> optimized_route;
+
+                                for (size_t tour_idx = 0; tour_idx < result.tour.size() - 1; tour_idx++) {
+                                        int from_point = result.tour[tour_idx];
+                                        int to_point = result.tour[tour_idx + 1];
+
+                                        clew_infof("Tour segment: %d -> %d", from_point, to_point);
+
+                                        // Find the corresponding solution in mesh_solutions
+                                        struct clew_mesh_solution *found_solution = nullptr;
+                                        for (int sol_idx = 0, sol_count = clew_stack_count(&clew->mesh_solutions); sol_idx < sol_count; sol_idx++) {
+                                                struct clew_mesh_solution *msolution = (struct clew_mesh_solution *) clew_stack_at(&clew->mesh_solutions, sol_idx);
+                                                if (msolution->source->id == (uint64_t) from_point && msolution->destination->id == (uint64_t) to_point) {
+                                                        found_solution = msolution;
+                                                        break;
+                                                }
+                                        }
+
+                                        if (found_solution) {
+                                                optimized_route.push_back(found_solution);
+                                                clew_infof("Found route segment: cost=%f", found_solution->cost);
+                                        } else {
+                                                clew_errorf("Error: Could not find solution for %d -> %d", from_point, to_point);
+                                        }
+                                }
+
+                                // Now you have the optimized route as a sequence of clew_mesh_solution pointers
+                                clew_infof("Optimized tour has %zu segments", optimized_route.size());
+
+                                clew_infof("writing solution");
+
+                                FILE *fp = fopen("output-solution.gpx", "w+b");
+
+                                fprintf(fp, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+                                fprintf(fp, "<gpx version=\"1.1\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n");
+
+                                for (i = 0, il = clew_stack_count(&clew->mesh_points); i < il; i++) {
+                                        struct clew_mesh_point *mpoint = (struct clew_mesh_point *) clew_stack_at(&clew->mesh_points, i);
+                                        fprintf(fp, " <wpt lon=\"%.7f\" lat=\"%.7f\">\n", mpoint->lon * 1e-7, mpoint->lat * 1e-7);
+                                        fprintf(fp, "  <name>point %ld</name>\n", i);
+                                        fprintf(fp, " </wpt>\n");
+                                }
+
+                                for (size_t route_idx = 0; route_idx < optimized_route.size(); route_idx++) {
+                                        struct clew_mesh_solution *msolution = optimized_route[route_idx];
+                                        fprintf(fp, " <trk>\n");
+                                        fprintf(fp, "  <name>from: %ld (%.7f,%.7f) to: %ld (%.7f,%.7f)</name>\n",
+                                                msolution->source->id,
+                                                msolution->source->lon * 1e-7, msolution->source->lat * 1e-7,
+                                                msolution->destination->id,
+                                                msolution->destination->lon * 1e-7, msolution->destination->lat * 1e-7);
+                                        fprintf(fp, "  <desc>distance=%.3fm duration=%.1fs cost=%.3f</desc>\n",
+                                                msolution->distance, msolution->duration, msolution->cost);
+                                        fprintf(fp, "  <trkseg>\n");
+                                        for (j = 0, jl = clew_stack_count(&optimized_route[route_idx]->mesh_nodes); j < jl; j++) {
+                                                struct clew_mesh_node *mnode = *(struct clew_mesh_node **) clew_stack_at(&optimized_route[route_idx]->mesh_nodes, j);
+                                                fprintf(fp, "   <trkpt lon=\"%.7f\" lat=\"%.7f\"/>\n", mnode->node->lon * 1e-7, mnode->node->lat * 1e-7);
+                                        }
+                                        fprintf(fp, "  </trkseg>\n");
+                                        fprintf(fp, " </trk>\n");
+                                }
+
+                                fprintf(fp, "</gpx>\n");
+                                fclose(fp);
+
+                        }
+                }
         }
 
 out:

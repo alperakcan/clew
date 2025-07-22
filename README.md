@@ -36,6 +36,12 @@ Clew is a semi-optimal route planning tool for adventure motor touring — (aka:
       europe-latest-clipped-100000m.osm.pbf \
       nwr/highway r/restriction
 
+    ogr2ogr -f KML output-routes-waypoints.kml output-routes.gpx waypoints
+    ogr2ogr -f KML output-routes-tracks.kml output-routes.gpx tracks
+    ogr2ogr -f KML output-routes.kml output-routes-waypoints.kml
+    ogr2ogr -f KML -append output-routes.kml output-routes-tracks.kml
+    zip -j output-routes.kmz output-routes.kml
+
     ogr2ogr -f KML output-solution-waypoints.kml output-solution.gpx waypoints
     ogr2ogr -f KML output-solution-tracks.kml output-solution.gpx tracks
     ogr2ogr -f KML output-solution.kml output-solution-waypoints.kml
